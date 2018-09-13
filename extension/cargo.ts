@@ -4,8 +4,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { inspect } from 'util';
 import * as util from './util';
-import { Dict } from './util';
+import { Dict } from './common';
 import { output } from './main';
+import { existsAsync } from './async';
 
 export interface CargoConfig {
     args: string[];
@@ -93,60 +94,62 @@ async function getCargoArtifacts(cargoArgs: string[], folder: string): Promise<C
 
 
 export async function getLaunchConfigs(folder: string): Promise<DebugConfiguration[]> {
+    if (!await existsAsync(path.join(folder, 'Cargo.toml')))
+        return [];
+
+    let metadata: any = null;
+
+    let exitCode = await runCargo(['metadata', '--no-deps', '--format-version=1'], folder,
+        m => { metadata = m },
+        stderr => { output.append(stderr); }
+    );
+    if (exitCode != 0)
+        throw new Error(`Cargo exited with non-zero status code: ${exitCode}`);
+    if (!metadata)
+        throw new Error(`Cargo produced no metadata`);
+
     let configs: DebugConfiguration[] = [];
+    for (let pkg of metadata.packages) {
+        function addConfig(name: string, cargo_args: string[], filter_kind: string) {
+            configs.push({
+                type: 'lldb',
+                request: 'launch',
+                name: name,
+                cargo: {
+                    args: cargo_args.concat(`--package=${pkg.name}`),
+                    filter: { kind: filter_kind }
+                },
+                args: [],
+                cwd: '${workspaceFolder}'
+            });
+        };
 
-    if (fs.existsSync(path.join(folder, 'Cargo.toml'))) {
-        let metadata: any = null;
-        let exitCode = await runCargo(['metadata', '--no-deps', '--format-version=1'], folder,
-            m => { metadata = m },
-            stderr => { output.append(stderr); }
-        );
-
-        if (metadata && exitCode == 0) {
-            for (let pkg of metadata.packages) {
-
-                function addConfig(name: string, cargo_args: string[], filter_kind: string) {
-                    configs.push({
-                        type: 'lldb',
-                        request: 'launch',
-                        name: name,
-                        cargo: {
-                            args: cargo_args.concat(`--package=${pkg.name}`),
-                            filter: { kind: filter_kind }
-                        },
-                        args: [],
-                        cwd: '${workspaceFolder}'
-                    });
-                };
-
-                for (let target of pkg.targets) {
-                    let libAdded = false;
-                    for (let kind of target.kind) {
-                        switch (kind) {
-                            case 'lib':
-                            case 'rlib':
-                            case 'staticlib':
-                            case 'dylib':
-                            case 'cstaticlib':
-                                if (!libAdded) {
-                                    addConfig(`Debug unit tests in library '${target.name}'`,
-                                        ['test', '--no-run', '--lib'], 'lib');
-                                    libAdded = true;
-                                }
-                                break;
-
-                            case 'bin':
-                            case 'test':
-                            case 'example':
-                            case 'bench':
-                                let prettyKind = (kind == 'bin') ? 'executable' : (kind == 'bench') ? 'benchmark' : kind;
-                                addConfig(`Debug ${prettyKind} '${target.name}'`,
-                                    ['build', `--${kind}=${target.name}`], 'bin');
-                                addConfig(`Debug unit tests in ${prettyKind} '${target.name}'`,
-                                    ['test', '--no-run', `--${kind}=${target.name}`], 'bin');
-                                break;
+        for (let target of pkg.targets) {
+            let libAdded = false;
+            for (let kind of target.kind) {
+                switch (kind) {
+                    case 'lib':
+                    case 'rlib':
+                    case 'staticlib':
+                    case 'dylib':
+                    case 'cstaticlib':
+                        if (!libAdded) {
+                            addConfig(`Debug unit tests in library '${target.name}'`,
+                                ['test', '--no-run', '--lib'], 'lib');
+                            libAdded = true;
                         }
-                    }
+                        break;
+
+                    case 'bin':
+                    case 'test':
+                    case 'example':
+                    case 'bench':
+                        let prettyKind = (kind == 'bin') ? 'executable' : (kind == 'bench') ? 'benchmark' : kind;
+                        addConfig(`Debug ${prettyKind} '${target.name}'`,
+                            ['build', `--${kind}=${target.name}`], 'bin');
+                        addConfig(`Debug unit tests in ${prettyKind} '${target.name}'`,
+                            ['test', '--no-run', `--${kind}=${target.name}`], 'bin');
+                        break;
                 }
             }
         }
@@ -166,8 +169,9 @@ async function runCargo(
             cwd: cwd
         });
 
-        cargo.on('error', err => reject(err));
-
+        cargo.on('error', err => {
+            reject(new Error(`Cargo has failed: ${err}`));
+        });
         cargo.stderr.on('data', chunk => {
             onStderrString(chunk.toString());
         });

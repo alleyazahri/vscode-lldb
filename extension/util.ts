@@ -1,11 +1,7 @@
 import { QuickPickItem, WorkspaceConfiguration, DebugConfiguration, OutputChannel } from 'vscode';
 import * as cp from 'child_process';
-import { format } from 'util';
-import * as stream from 'stream';
-
-export interface Dict<T> {
-    [key: string]: T;
-}
+import { readdirAsync } from './async';
+import { Dict } from './common';
 
 let expandVarRegex = /\$\{(?:([^:}]+):)?([^}]+)\}/g;
 
@@ -112,7 +108,7 @@ export async function getProcessList(currentUserOnly: boolean):
             let pid = parseInt(groups[idx[0]]);
             let name = groups[idx[1]];
             let descr = groups[idx[2]];
-            let item = { label: format('%d: %s', pid, name), description: descr, pid: pid };
+            let item = { label: `${pid}: ${name}`, description: descr, pid: pid };
             items.unshift(item);
         }
     }
@@ -161,63 +157,55 @@ function isScalarValue(value: any): boolean {
         typeof value == 'string' || value instanceof String;
 }
 
-export function waitForPattern(
-    process: cp.ChildProcess,
-    channel: stream.Readable,
-    pattern: RegExp,
-    timeoutMillis = 5000
-): Promise<RegExpExecArray> {
-    return new Promise<RegExpExecArray>((resolve, reject) => {
-        let promisePending = true;
-        let prcoessOutput = '';
-        // Wait for expected pattern in channel.
-        channel.on('data', (chunk) => {
-            let chunkStr = chunk.toString();
-            if (promisePending) {
-                prcoessOutput += chunkStr;
-                let match = pattern.exec(prcoessOutput);
-                if (match) {
-                    clearTimeout(timer);
-                    prcoessOutput = null;
-                    promisePending = false;
-                    resolve(match);
-                }
-            }
-        });
-        // On spawn error.
-        process.on('error', (err) => {
-            promisePending = false;
-            reject(err);
-        });
-        // Bail if LLDB does not start within the specified timeout.
-        let timer = setTimeout(() => {
-            if (promisePending) {
-                process.kill();
-                let err = Error('The debugger did not start within the allotted time.');
-                (<any>err).code = 'Timeout';
-                (<any>err).stdout = prcoessOutput;
-                promisePending = false;
-                reject(err);
-            }
-        }, timeoutMillis);
-        // Premature exit.
-        process.on('exit', (code, signal) => {
-            if (promisePending) {
-                let err = Error('The debugger exited without completing startup handshake.');
-                (<any>err).code = 'Handshake';
-                (<any>err).stdout = prcoessOutput;
-                promisePending = false;
-                reject(err);
-            }
-        });
+export function logProcessOutput(process: cp.ChildProcess, output: OutputChannel) {
+    process.stdout.on('data', chunk => {
+        output.append(chunk.toString());
+    });
+    process.stderr.on('data', chunk => {
+        output.append(chunk.toString());
     });
 }
 
-export function logProcessOutput(process: cp.ChildProcess, output: OutputChannel) {
-    process.stdout.on('data', (chunk) => {
-        output.append(chunk.toString());
-    });
-    process.stderr.on('data', (chunk) => {
-        output.append(chunk.toString());
+export async function findFileByPattern(path: string, pattern: RegExp): Promise<string | null> {
+    let files = await readdirAsync(path);
+    for (let file of files) {
+        if (pattern.test(file))
+            return file;
+    }
+    return null;
+}
+
+export function setIfDefined(target: Dict<any>, config: WorkspaceConfiguration, key: string) {
+    let value = getConfigNoDefault(config, key);
+    if (value !== undefined)
+        target[key] = value;
+}
+
+export async function readRegistry(path: string, value?: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        let args = ['query', path];
+        if (value != null)
+            args.push('/v', value);
+        else
+            args.push('/ve');
+
+        let reg = cp.spawn('reg.exe', args, {
+            stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        reg.on('error', (err) => reject(err));
+        let stdout = '';
+        reg.stdout.on('data', chunk => stdout += chunk.toString());
+        reg.on('exit', code => {
+            if (code != 0) {
+                resolve(null);
+            } else {
+                let m = /REG_SZ\s+(.*)/.exec(stdout);
+                if (m) {
+                    resolve(m[1]);
+                } else {
+                    resolve(null);
+                }
+            }
+        });
     });
 }

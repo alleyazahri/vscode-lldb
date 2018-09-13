@@ -15,7 +15,6 @@ from . import debugevents
 from . import disassembly
 from . import handles
 from . import terminal
-from . import formatters
 from . import mem_limit
 from . import PY2, is_string, from_lldb_str, to_lldb_str, xrange
 
@@ -287,7 +286,11 @@ class DebugSession:
         return program
 
     def pre_launch(self):
-        expressions.init_formatters(self.debugger)
+        formatters = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'formatters')
+        for name in os.listdir(formatters):
+            file_path = os.path.join(formatters, name)
+            if name.endswith('.py') or os.path.isdir(file_path):
+                self.exec_commands(['command script import \'%s\'' % file_path])
 
     def exec_commands(self, commands):
         if commands is not None:
@@ -760,7 +763,9 @@ class DebugSession:
             self.send_response(self.launch_args['response'], e)
         # Make sure VSCode knows if the process was initially stopped.
         if self.process is not None and self.process.is_stopped:
-            self.notify_target_stopped(None)
+            self.update_threads()
+            tid = next(iter(self.known_threads))
+            self.send_event('stopped',  { 'allThreadsStopped': True, 'threadId': tid, 'reason': 'initial' })
 
     def DEBUG_pause(self, args):
         error = self.process.Stop()
@@ -1237,7 +1242,7 @@ class DebugSession:
         n = var.GetNumChildren()
         for i in xrange(0, n):
             child = var.GetChildAtIndex(i)
-            name = child.GetName()
+            name = child.GetName() or ''
             value = child.GetValue()
             if value is not None:
                 if size > 0:
@@ -1554,7 +1559,15 @@ class DebugSession:
         bp = lldb.SBBreakpoint.GetBreakpointFromEvent(event)
         bp_id = bp.GetID()
         if event_type == lldb.eBreakpointEventTypeAdded:
-            bp_info = BreakpointInfo(bp_id, SOURCE)
+            loc = bp.GetLocationAtIndex(0)
+            addr = loc.GetAddress()
+            le = addr.GetLineEntry()
+            if le:
+                bp_info = BreakpointInfo(bp_id, SOURCE)
+                bp_info.file_path = le.GetFileSpec().fullpath
+            else:
+                bp_info = BreakpointInfo(bp_id, ASSEMBLY)
+                bp_info.address = addr.GetLoadAddress(self.target)
             self.breakpoints[bp_id] = bp_info
             bp_resp = self.make_bp_resp(bp, bp_info)
             self.send_event('breakpoint', { 'reason': 'new', 'breakpoint': bp_resp })

@@ -1,65 +1,88 @@
 {
   "version": "2.0.0",
   "problemMatcher": [],
+  "type": "shell",
+  "command": "cmake",
+  "args": [
+    "--build",
+    "build",
+    "--target"
+  ],
   "tasks": [
     {
-      "type": "npm",
-      "script": "build",
-      "problemMatcher": "$tsc",
-      "group": "build"
-    },
-    {
-      "type": "npm",
-      "script": "build:debuggee:cpp",
-      "problemMatcher": "$gcc",
-      "group": "build"
-    },
-    {
-      "type": "npm",
-      "script": "build:debuggee:rust",
-      "problemMatcher": "$rustc",
-      "group": "build"
-    },
-    {
-      "type": "shell",
-      "label": "cargo build",
-      "command": "cargo",
-      "args": [
-        "build"
-      ],
-      "problemMatcher": [
-        "$rustc"
-      ],
-      "group": "build"
-    },
-    {
-      "type": "shell",
-      "label": "cargo check",
-      "command": "cargo",
-      "args": [
-        "check"
-      ],
-      "problemMatcher": [
-        "$rustc"
-      ],
-      "group": "build"
-    },
-    {
-      "type": "shell",
-      "label": "cargo test",
-      "command": "cargo",
-      "args": [
-        "test"
-      ],
-      "problemMatcher": [
-        "$rustc"
-      ],
-      "group": "test"
-    },
-    {
-      "type": "shell",
-      "label": "start extension host",
-      "command": "code --extensionDevelopmentPath=${workspaceRoot} ${workspaceRoot}/debuggee"
-    }
-  ]
-}
+      "label": "debugging",
+      "group": "build",
+      "problemMatcher": {
+          "base": "$tsc",
+          "fileLocation": ["relative", "${workspaceFolder}/build/extension"]
+        },
+      },
+      {
+        "label": "tests",
+        "group": "build"
+      },
+      {
+        "label": "lldb",
+        "group": "build"
+      },
+      {
+        "label": "adapter",
+        "group": "build"
+      },
+      {
+        "label": "codelldb",
+        "group": "build"
+      },
+      {
+        "label": "debuggee",
+        "group": "build"
+      },
+      {
+        "label": "cargo check",
+        "command": "cargo",
+        "args": [
+          "check"
+        ],
+        "presentation": {
+          "clear": true
+        },
+        "problemMatcher": [
+          "$rustc"
+        ],
+        "group": "build"
+      },
+      {
+        "label": "cargo test",
+        "command": "cargo",
+        "args": [
+          "test",
+          "--package=codelldb"
+        ],
+        "options": {
+          "env": {
+            "PATH": "${env:PATH};${workspaceFolder}/build/lldb/bin"
+          }
+        },
+        "group": "build"
+      },
+      {
+        "type": "shell",
+        "label": "Start extension host",
+        "command": "code --extensionDevelopmentPath=${workspaceRoot}/build ${workspaceRoot}/debuggee",
+        "group": "build",
+        "dependsOn": "debugging",
+      },
+      {
+        "label": "vsix_extracted",
+        "group": "build",
+        "problemMatcher": "$tsc"
+      },
+      {
+        "type": "shell",
+        "label": "Start extension host on extracted vsix",
+        "command": "code --extensionDevelopmentPath=${workspaceRoot}/build/tmp/extension ${workspaceRoot}/debuggee",
+        "group": "build",
+        "dependsOn": "vsix_extracted",
+      },
+    ]
+  }
