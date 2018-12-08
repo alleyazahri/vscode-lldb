@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as ver from '../extension/ver';
 import * as util from '../extension/util';
+import { toAdapterType } from '../extension/common';
 
 suite('Versions', () => {
     test('comparisons', async () => {
@@ -39,4 +40,16 @@ suite('Util', () => {
             { a: 1, b: 2, c: 3 }, { a: 10, d: 40 }),
             { a: 10, b: 2, c: 3, d: 40 });
     })
+
+    test('mergeEnv', async () => {
+        process.env['Foo'] = '111';
+        let env = util.mergeEnv({ 'FOO': '222' }, true);
+        assert.equal(env['Foo'], '222');
+        assert.equal(env['FOO'], undefined);
+
+        process.env['Foo'] = '111';
+        let env2 = util.mergeEnv({ 'FOO': '222' }, false);
+        assert.equal(env2['Foo'], '111');
+        assert.equal(env2['FOO'], '222');
+    });
 })

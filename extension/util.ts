@@ -150,6 +150,29 @@ export function mergeValues(value1: any, value2: any): any {
     return Object.assign({}, value1, value2);
 }
 
+// Expand ${env:...} placeholders in extraEnv and merge it with the current process' environment.
+export function mergeEnv(extraEnv: Dict<string>, ignoreCase = (process.platform == 'win32')): Dict<string> {
+    let env = Object.assign({}, process.env);
+
+    // Windows environment varibles are case-insensitive: for example, `Path` and `PATH` refer to the same variable.
+    // We must preserve this behavior when merging them.
+    let existingVars: Dict<string> = {};
+    if (ignoreCase) {
+        for (const key in env)
+            existingVars[key.toUpperCase()] = key;
+    }
+
+    for (let key in extraEnv) {
+        let mappedKey = existingVars[key.toUpperCase()] || key;
+        env[mappedKey] = expandVariables(extraEnv[key], (type, key) => {
+            if (type == 'env')
+                return process.env[key];
+            throw new Error('Unknown variable type ' + type);
+        });
+    }
+    return env;
+}
+
 function isScalarValue(value: any): boolean {
     return value === null || value === undefined ||
         typeof value == 'boolean' || value instanceof Boolean ||
