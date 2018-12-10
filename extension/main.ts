@@ -101,6 +101,11 @@ class Extension implements DebugConfigurationProvider {
     ): Promise<DebugConfiguration> {
         output.clear();
 
+        if (launchConfig.type === undefined) {
+            await window.showErrorMessage('Cannot start debugging because no launch configuration has been provided.', { modal: true });
+            return null;
+        }
+
         if (!this.checkPrerequisites(folder))
             return undefined;
 

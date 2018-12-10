@@ -63,31 +63,32 @@ export async function getProgramFromCargo(cargoConfig: CargoConfig, cwd: string)
 // Runs cargo, returns a list of compilation artifacts.
 async function getCargoArtifacts(cargoArgs: string[], folder: string): Promise<CompilationArtifact[]> {
     let artifacts: CompilationArtifact[] = [];
-    let exitCode = await runCargo(cargoArgs, folder,
-        message => {
-            if (message.reason == 'compiler-artifact') {
-                let isBinary = message.target.crate_types.includes('bin');
-                let isBuildScript = message.target.kind.includes('custom-build');
-                if ((isBinary && !isBuildScript) || message.profile.test) {
-                    for (let i = 0; i < message.filenames.length; ++i) {
-                        if (message.filenames[i].endsWith('.dSYM'))
-                            continue;
-                        artifacts.push({
-                            fileName: message.filenames[i],
-                            name: message.target.name,
-                            kind: message.target.kind[i]
-                        });
+    try {
+        await runCargo(cargoArgs, folder,
+            message => {
+                if (message.reason == 'compiler-artifact') {
+                    let isBinary = message.target.crate_types.includes('bin');
+                    let isBuildScript = message.target.kind.includes('custom-build');
+                    if ((isBinary && !isBuildScript) || message.profile.test) {
+                        for (let i = 0; i < message.filenames.length; ++i) {
+                            if (message.filenames[i].endsWith('.dSYM'))
+                                continue;
+                            artifacts.push({
+                                fileName: message.filenames[i],
+                                name: message.target.name,
+                                kind: message.target.kind[i]
+                            });
+                        }
                     }
+                } else if (message.reason == 'compiler-message') {
+                    output.appendLine(message.message.rendered);
                 }
-            } else if (message.reason == 'compiler-message') {
-                output.appendLine(message.message.rendered);
-            }
-        },
-        stderr => { output.append(stderr); }
-    );
-    if (exitCode != 0) {
+            },
+            stderr => { output.append(stderr); }
+        );
+    } catch (err) {
         output.show();
-        throw new Error('Cargo invocation has failed (exit code: ' + exitCode.toString() + ').');
+        throw new Error(`Cargo invocation has failed: ${err}`);
     }
     return artifacts;
 }
@@ -99,12 +100,10 @@ export async function getLaunchConfigs(folder: string): Promise<DebugConfigurati
 
     let metadata: any = null;
 
-    let exitCode = await runCargo(['metadata', '--no-deps', '--format-version=1'], folder,
+    await runCargo(['metadata', '--no-deps', '--format-version=1'], folder,
         m => { metadata = m },
         stderr => { output.append(stderr); }
     );
-    if (exitCode != 0)
-        throw new Error(`Cargo exited with non-zero status code: ${exitCode}`);
     if (!metadata)
         throw new Error(`Cargo produced no metadata`);
 
@@ -170,7 +169,7 @@ async function runCargo(
         });
 
         cargo.on('error', err => {
-            reject(new Error(`Cargo has failed: ${err}`));
+            reject(new Error(`could not launch cargo: ${err}`));
         });
         cargo.stderr.on('data', chunk => {
             onStderrString(chunk.toString());
@@ -188,7 +187,10 @@ async function runCargo(
         });
 
         cargo.on('exit', (exitCode, signal) => {
-            resolve(exitCode);
+            if (exitCode == 0)
+                resolve(exitCode);
+            else
+                reject(new Error(`exit code: ${exitCode}.`));
         });
     });
 }
