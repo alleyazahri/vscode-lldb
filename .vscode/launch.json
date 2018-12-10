@@ -125,7 +125,7 @@
 				"--timeout", "999999",
 				"--colors",
 				"--exit",
-				"-g", "mergeEnv",
+				"-g", "Environment",
 				"build/tests/tests"
 			],
 			"env": {

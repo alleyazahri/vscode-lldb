@@ -4,6 +4,7 @@ import { Readable } from 'stream';
 import * as util from './util';
 import { Dict } from './common';
 import { statAsync } from './async';
+import { Environment } from './util';
 
 export async function startClassic(
     extensionRoot: string,
@@ -70,7 +71,7 @@ export const getPythonPathAsync = process.platform == 'win32' ?
 export async function spawnDebugAdapter(
     executable: string,
     args: string[],
-    env: Dict<string>,
+    env: Environment,
     cwd: string
 ): Promise<cp.ChildProcess> {
     if (process.platform == 'darwin') {
@@ -81,10 +82,10 @@ export async function spawnDebugAdapter(
         // Try to locate Python installation and add it to the PATH.
         let pythonPath = await getPythonPathAsync;
         if (pythonPath) {
-            // By this point, env keys will have been normalized to uppercase.
             env['PATH'] = env['PATH'] + ';' + pythonPath;
         }
     }
+
     return cp.spawn(executable, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: env,

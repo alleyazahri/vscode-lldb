@@ -45,7 +45,8 @@ export async function diagnoseExternalLLDB(output: OutputChannel, quiet = false)
         }
         for (let name of lldbNames) {
             try {
-                let lldb = await adapter.spawnDebugAdapter(name, ['-v'], adapterEnv, workspace.rootPath);
+                let env = util.mergeEnv(adapterEnv);
+                let lldb = await adapter.spawnDebugAdapter(name, ['-v'], env, workspace.rootPath);
                 util.logProcessOutput(lldb, output);
                 version = (await adapter.waitForPattern(lldb, lldb.stdout, pattern))[1];
                 adapterPath = name;
@@ -67,11 +68,13 @@ export async function diagnoseExternalLLDB(output: OutputChannel, quiet = false)
 
             // Check if Python scripting is usable.
             output.appendLine('--- Checking Python ---');
-            let lldb2 = await adapter.spawnDebugAdapter(adapterPath, ['-b',
+            let env = util.mergeEnv(adapterEnv);
+            let lldb2 = await adapter.spawnDebugAdapter(adapterPath, [
+                '-b',
                 '-O', 'script import sys, io, lldb',
                 '-O', 'script print(lldb.SBDebugger.Create().IsValid())',
                 '-O', 'script print("OK")'
-            ], adapterEnv, workspace.rootPath);
+            ], env, workspace.rootPath);
             util.logProcessOutput(lldb2, output);
             // [^] = match any char, including newline
             let match2 = await adapter.waitForPattern(lldb2, lldb2.stdout, new RegExp('^True$[^]*^OK$', 'm'));
