@@ -1,7 +1,8 @@
-import { workspace, window, commands, OutputChannel, ConfigurationTarget, Uri, WorkspaceFolder } from "vscode";
+import { workspace, window, commands, OutputChannel, ConfigurationTarget, Uri, WorkspaceFolder, ExtensionContext } from "vscode";
 import { inspect } from "util";
 import * as ver from './ver';
 import * as adapter from './adapter';
+import * as install from './install';
 import * as util from './util';
 
 enum DiagnosticsStatus {
@@ -11,8 +12,9 @@ enum DiagnosticsStatus {
     NotFound = 3
 }
 
-export async function diagnoseExternalLLDB(output: OutputChannel, quiet = false): Promise<boolean> {
+export async function diagnoseExternalLLDB(context: ExtensionContext, output: OutputChannel, quiet = false): Promise<boolean> {
     let status = DiagnosticsStatus.Succeeded;
+    let config = workspace.getConfiguration('lldb', null);
     try {
         output.appendLine('--- Checking version ---');
         let versionPattern = '^lldb version ([0-9.]+)';
@@ -25,7 +27,6 @@ export async function diagnoseExternalLLDB(output: OutputChannel, quiet = false)
         }
         let pattern = new RegExp(versionPattern, 'm');
 
-        let config = workspace.getConfiguration('lldb', null);
         let adapterPathOrginal = config.get('executable', 'lldb');
         let adapterPath = adapterPathOrginal;
         let adapterEnv = config.get('executable_env', {});
@@ -91,7 +92,7 @@ export async function diagnoseExternalLLDB(output: OutputChannel, quiet = false)
                     `Would you like to update LLDB configuration with this value ? `, { modal: true },
                     'Yes', 'No');
                 if (action == 'Yes') {
-                    output.appendLine('Setting "lldb.executable": "' + adapterPath + '".');
+                    output.appendLine(`Setting "lldb.executable": "${adapterPath}".`);
                     config.update('executable', adapterPath, ConfigurationTarget.Global);
                 } else {
                     status = DiagnosticsStatus.Failed;
@@ -116,10 +117,21 @@ export async function diagnoseExternalLLDB(output: OutputChannel, quiet = false)
                 window.showErrorMessage('LLDB self-test has failed!');
                 break;
             case DiagnosticsStatus.NotFound:
-                let action = await window.showErrorMessage('Could not find LLDB on this machine.', { modal: true },
-                    'Show installation instructions');
-                if (action != null)
-                    commands.executeCommand('vscode.open', Uri.parse('https://github.com/vadimcn/vscode-lldb/wiki/Installing-LLDB'));
+                let buttons = [{ title: 'Show installation instructions', action: 'instructions' }];
+                if (process.platform == 'win32' && config.get('adapterType') == 'classic') {
+                    buttons.push({ title: 'Use bundled LLDB [Beta]', action: 'bundled' });
+                }
+                let choice = await window.showErrorMessage('Could not find LLDB on this machine.', { modal: true }, ...buttons);
+                if (choice != null) {
+                    if (choice.action == 'instructions') {
+                        commands.executeCommand('vscode.open', Uri.parse('https://github.com/vadimcn/vscode-lldb/wiki/Installing-LLDB'));
+                    } else if (choice.action == 'bundled') {
+                        output.appendLine('Setting "lldb.adapterType": "bundled".');
+                        config.update('adapterType', 'bundled', ConfigurationTarget.Global);
+                        if (await install.ensurePlatformPackage(context, output))
+                            status = DiagnosticsStatus.Succeeded;
+                    }
+                }
                 break;
         }
     }
@@ -142,7 +154,7 @@ export async function checkPython(output: OutputChannel, quiet = false) {
     }
 }
 
-export async function analyzeStartupError(err: Error, output: OutputChannel) {
+export async function analyzeStartupError(err: Error, context: ExtensionContext, output: OutputChannel) {
     output.appendLine(err.toString());
     output.show(true)
     let e = <any>err;
@@ -159,6 +171,6 @@ export async function analyzeStartupError(err: Error, output: OutputChannel) {
     }
 
     if ((await actionAsync) == diagnostics) {
-        await diagnoseExternalLLDB(output);
+        await diagnoseExternalLLDB(context, output);
     }
 }

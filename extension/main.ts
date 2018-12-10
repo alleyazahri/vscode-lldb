@@ -154,7 +154,7 @@ class Extension implements DebugConfigurationProvider {
             launchConfig._displaySettings = this.context.globalState.get<DisplaySettings>('display_settings') || new DisplaySettings();
             return launchConfig;
         } catch (err) {
-            diagnostics.analyzeStartupError(err, output);
+            diagnostics.analyzeStartupError(err, this.context, output);
             return null;
         }
     }
@@ -250,7 +250,7 @@ class Extension implements DebugConfigurationProvider {
         if (this.getAdapterType(folder) == 'classic') {
             if (!this.context.globalState.get('lldb_works')) {
                 window.showInformationMessage("Since this is the first time you are starting LLDB, I'm going to run some quick diagnostics...");
-                if (!await diagnostics.diagnoseExternalLLDB(output))
+                if (!await diagnostics.diagnoseExternalLLDB(this.context, output))
                     return false;
                 this.context.globalState.update('lldb_works', true);
             }
@@ -268,7 +268,7 @@ class Extension implements DebugConfigurationProvider {
         let succeeded;
         switch (adapterType) {
             case 'classic':
-                succeeded = await diagnostics.diagnoseExternalLLDB(output);
+                succeeded = await diagnostics.diagnoseExternalLLDB(this.context, output);
                 break;
             case 'bundled':
             case 'native':

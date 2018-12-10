@@ -211,6 +211,7 @@ int main(int argc, char *argv[])
 
     if (args.size() < 2) // #BP1
     {
+        printf("No testcase was specified.\n");
         return -1;
     }
 
@@ -286,6 +287,10 @@ int main(int argc, char *argv[])
     else if (testcase == "dasm")
     {
         disassembly1();
+    }
+    else
+    {
+        printf("Unknown testcase.\n");
     }
     return 0;
 }
