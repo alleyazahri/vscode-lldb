@@ -1,14 +1,12 @@
+use log::{debug, error, info};
 use std::env;
 use std::fmt::Write;
-use std::mem;
-use std::os::raw::{c_int, c_ulong, c_void};
-use std::slice::{self, SliceConcatExt};
+use std::os::raw::{c_int, c_void};
+use std::slice;
 
 use lldb::*;
 
 use crate::error::Error;
-use crate::lldb::*;
-use crate::must_initialize::*;
 
 pub fn initialize(interpreter: &SBCommandInterpreter) -> Result<(), Error> {
     let mut init_script = env::current_exe()?;
@@ -91,7 +89,7 @@ pub fn evaluate(
     );
 
     let mut command_result = SBCommandReturnObject::new();
-    let result = interpreter.handle_command_with_context(&command, &context, &mut command_result, false);
+    interpreter.handle_command_with_context(&command, &context, &mut command_result, false);
 
     info!("{:?}", command_result);
     info!("{:?}", eval_result);
@@ -119,6 +117,6 @@ pub fn modules_loaded(interpreter: &SBCommandInterpreter, modules: &mut Iterator
         "script codelldb.modules_loaded([{}],{:#X})",
         module_addrs, assign_sbmodule as *mut c_void as usize,
     );
-    let result = interpreter.handle_command(&command, &mut command_result, false);
+    interpreter.handle_command(&command, &mut command_result, false);
     debug!("{:?}", command_result);
 }

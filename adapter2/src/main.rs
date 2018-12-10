@@ -1,7 +1,3 @@
-extern crate clap;
-extern crate env_logger;
-extern crate failure;
-
 use clap::{App, Arg};
 use std::env;
 use std::mem;

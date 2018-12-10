@@ -1,4 +1,4 @@
-use failure;
+use failure_derive::*;
 use lldb;
 use serde_json;
 use std::error::Error as ErrorTrait;

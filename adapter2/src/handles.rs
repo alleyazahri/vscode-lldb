@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::mem;
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use log::{debug, error, info};
 
 use crate::error::Error;
 

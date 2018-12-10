@@ -1,19 +1,13 @@
-use globset;
-use regex;
-use serde_json;
-
 use std;
 use std::borrow::Cow;
 use std::boxed::FnBox;
 use std::cell::RefCell;
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ffi::CStr;
 use std::fmt::Write;
 use std::mem;
-use std::option;
-use std::path::{self, Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::str;
 use std::sync::{Arc, Mutex, Weak};
@@ -21,6 +15,8 @@ use std::thread;
 
 use futures;
 use futures::prelude::*;
+use log::{debug, error, info};
+use serde_json;
 
 use crate::cancellation::{CancellationSource, CancellationToken};
 use crate::debug_protocol::*;
@@ -215,7 +211,7 @@ impl DebugSession {
         };
     }
 
-    fn handle_response(&mut self, response: Response) {}
+    fn handle_response(&mut self, _response: Response) {}
 
     fn handle_request(&mut self, request: Request) {
         let result = if let Some(arguments) = request.arguments {
@@ -368,7 +364,7 @@ impl DebugSession {
         }));
     }
 
-    fn handle_initialize(&mut self, args: InitializeRequestArguments) -> Result<Capabilities, Error> {
+    fn handle_initialize(&mut self, _args: InitializeRequestArguments) -> Result<Capabilities, Error> {
         self.debugger = Initialized(SBDebugger::create(false));
         self.debugger.set_async(true);
 
@@ -427,12 +423,12 @@ impl DebugSession {
             ref mut breakpoint_infos,
             ..
         } = *self.breakpoints.borrow_mut();
-        let mut existing_bps = source.entry(file_path.into()).or_default();
+        let existing_bps = source.entry(file_path.into()).or_default();
         let mut new_bps = HashMap::new();
         let mut result = vec![];
         for req in requested_bps {
             // Find existing breakpoint or create a new one
-            let mut bp = match existing_bps
+            let bp = match existing_bps
                 .get(&req.line)
                 .and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id))
             {
@@ -488,14 +484,14 @@ impl DebugSession {
             ref mut breakpoint_infos,
             ..
         } = *self.breakpoints.borrow_mut();
-        let mut existing_bps = assembly.entry(dasm.handle()).or_default();
+        let existing_bps = assembly.entry(dasm.handle()).or_default();
         let mut new_bps = HashMap::new();
         let mut result = vec![];
         for req in requested_bps {
             let address = dasm.address_by_line_num(req.line as u32);
 
             // Find existing breakpoint or create a new one
-            let mut bp = match existing_bps
+            let bp = match existing_bps
                 .get(&req.line)
                 .and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id))
             {
@@ -624,7 +620,7 @@ impl DebugSession {
         let mut result = vec![];
         for req in args.breakpoints {
             // Find existing breakpoint or create a new one
-            let mut bp = match function
+            let bp = match function
                 .get(&req.name)
                 .and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id))
             {
@@ -661,13 +657,13 @@ impl DebugSession {
         Ok(SetBreakpointsResponseBody { breakpoints: result })
     }
 
-    fn handle_set_exception_breakpoints(&mut self, args: SetExceptionBreakpointsArguments) -> Result<(), Error> {
+    fn handle_set_exception_breakpoints(&mut self, _args: SetExceptionBreakpointsArguments) -> Result<(), Error> {
         Ok(())
     }
 
     fn init_bp_actions(&self, bp_info: &BreakpointInfo) {
         fn evaluate_python_bp_condition(
-            expr: &str, process: &SBProcess, thread: &SBThread, location: &SBBreakpointLocation,
+            expr: &str, process: &SBProcess, thread: &SBThread, _location: &SBBreakpointLocation,
         ) -> bool {
             let debugger = process.target().debugger();
             let interpreter = debugger.command_interpreter();
@@ -889,7 +885,7 @@ impl DebugSession {
             self.exec_commands(commands);
         }
 
-        let mut attach_info = SBAttachInfo::new();
+        let attach_info = SBAttachInfo::new();
         if let Some(pid) = args.pid {
             let pid = match pid {
                 Pid::Number(n) => n as ProcessID,
@@ -1041,7 +1037,7 @@ impl DebugSession {
             &self.event_listener,
             SBTargetEvent::BroadcastBitBreakpointChanged | SBTargetEvent::BroadcastBitModulesLoaded,
         );
-        if let Some((request_seq, mut responder)) = self.on_configuration_done.take() {
+        if let Some((request_seq, responder)) = self.on_configuration_done.take() {
             let result = responder.call_box((self,));
 
             self.send_response(request_seq, result);
@@ -1360,7 +1356,7 @@ impl DebugSession {
     fn get_var_value_str(&self, var: &SBValue, format: Format, is_container: bool) -> String {
         // TODO: let mut var: Cow<&SBValue> = var.into(); ???
         let mut value_opt: Option<String> = None;
-        let mut var2: Option<SBValue> = None;
+        let mut var2: Option<SBValue>;
         let mut var = var;
         var.set_format(format);
 
@@ -1649,7 +1645,7 @@ impl DebugSession {
         }
     }
 
-    fn handle_pause(&mut self, args: PauseArguments) -> Result<(), Error> {
+    fn handle_pause(&mut self, _args: PauseArguments) -> Result<(), Error> {
         let error = self.process.stop();
         if error.is_success() {
             Ok(())
@@ -1664,7 +1660,7 @@ impl DebugSession {
         }
     }
 
-    fn handle_continue(&mut self, args: ContinueArguments) -> Result<ContinueResponseBody, Error> {
+    fn handle_continue(&mut self, _args: ContinueArguments) -> Result<ContinueResponseBody, Error> {
         self.before_resume();
         let error = self.process.resume();
         if error.is_success() {
@@ -1868,7 +1864,7 @@ impl DebugSession {
     fn notify_process_stopped(&mut self) {
         self.update_threads();
         // Find thread that has caused this stop
-        let mut stopped_thread = None;
+        let mut stopped_thread;
         // Check the currently selected thread first
         let selected_thread = self.process.selected_thread();
         stopped_thread = match selected_thread.stop_reason() {
@@ -1968,7 +1964,7 @@ impl DebugSession {
             }
         } else if flags & SBTargetEvent::BroadcastBitModulesUnloaded != 0 {
             for module in event.modules() {
-                let mut message = format!("Module Unloaded: {}", module.filespec().path());
+                let message = format!("Module Unloaded: {}", module.filespec().path());
                 self.console_message(message);
             }
         }
@@ -2071,10 +2067,6 @@ where
 
 fn into_string_lossy(cstr: &CStr) -> String {
     cstr.to_string_lossy().into_owned()
-}
-
-fn opt_as_ref<'a>(x: &'a Option<String>) -> Option<&'a str> {
-    x.as_ref().map(|r| r.as_ref())
 }
 
 #[cfg(windows)]

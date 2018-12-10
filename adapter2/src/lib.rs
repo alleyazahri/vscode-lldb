@@ -1,46 +1,16 @@
 #![feature(try_trait)]
 #![feature(fnbox)]
-#![feature(nll)]
-#![feature(slice_concat_ext)]
-#![allow(unused)]
-
-#[macro_use]
-extern crate serde_derive;
-extern crate serde;
-#[macro_use]
-extern crate serde_json;
-#[macro_use]
-extern crate failure_derive;
-#[macro_use]
-extern crate lazy_static;
-extern crate debug_protocol as raw_debug_protocol;
-extern crate failure;
-extern crate lldb;
-#[macro_use]
-extern crate log;
-extern crate bytes;
-extern crate env_logger;
-extern crate globset;
-extern crate regex;
-extern crate superslice;
-
-extern crate futures;
-extern crate tokio;
-extern crate tokio_threadpool;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//#![allow(unused)]
 
 use std::net;
 
 use futures::prelude::*;
 use tokio::prelude::*;
 
-use futures::future::{lazy, poll_fn};
-use futures::sync::mpsc;
+use log::{debug, error, info};
 use tokio::codec::Decoder;
 use tokio::io;
 use tokio::net::TcpListener;
-use tokio_threadpool::blocking;
 
 use lldb::*;
 
@@ -82,7 +52,7 @@ pub extern "C" fn entry(port: u16, multi_session: bool) {
 
     let server = server
         .for_each(|conn| {
-            conn.set_nodelay(true);
+            conn.set_nodelay(true).unwrap();
             run_debug_session(conn)
         })
         .then(|r| {
@@ -108,16 +78,16 @@ fn run_debug_session(
         let client_to_session = from_client
             .map_err(|_| ()) //.
             .forward(to_session)
-            .then(|r| {
+            .then(|_| {
                 info!("### client_to_session stream terminated");
                 Ok(())
             });
         tokio::spawn(client_to_session);
 
         let session_to_client = from_session
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, "DebugSession error"))
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "DebugSession error"))
             .forward(to_client)
-            .then(|r| {
+            .then(|_| {
                 debug!("### session_to_client stream terminated");
                 Ok(())
             });

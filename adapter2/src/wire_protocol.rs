@@ -1,12 +1,12 @@
-use bytes::{BufMut, BytesMut};
-use std::error::Error;
+use bytes::BytesMut;
+use log::{debug, error, info};
 use std::fmt::Write;
 use std::str;
-use tokio::io;
 use tokio::codec;
+use tokio::io;
 
 use crate::debug_protocol::ProtocolMessage;
-use serde_json::{self, Value};
+use serde_json;
 
 enum State {
     ReadingHeaders,
@@ -50,7 +50,7 @@ impl codec::Decoder for Codec {
                     }
                 },
                 State::ReadingBody => {
-                    if (buffer.len() < self.content_len) {
+                    if buffer.len() < self.content_len {
                         return Ok(None);
                     } else {
                         let message_bytes = buffer.split_to(self.content_len);
@@ -62,7 +62,7 @@ impl codec::Decoder for Codec {
                             Ok(message) => return Ok(Some(message)),
                             Err(err) => {
                                 error!("Could not deserialize: {}", err);
-                                return Err(io::Error::new(io::ErrorKind::InvalidData, Box::new(err)))
+                                return Err(io::Error::new(io::ErrorKind::InvalidData, Box::new(err)));
                             }
                         }
                     }

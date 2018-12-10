@@ -25,7 +25,7 @@ impl SourceMap {
         for (remote, local) in source_map.into_iter() {
             let glob = match Glob::new(remote.as_ref()) {
                 Ok(glob) => glob,
-                Err(err) => return Err(Error::UserError(format!("Invalid glob pattern: {}", remote.as_ref()))),
+                Err(err) => return Err(Error::UserError(format!("Invalid glob pattern: {}: {}", remote.as_ref(), err))),
             };
             builder.add(glob);
             locals.push(local.map(|l| l.as_ref().to_owned()));

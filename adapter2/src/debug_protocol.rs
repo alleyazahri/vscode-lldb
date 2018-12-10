@@ -1,12 +1,10 @@
 #![allow(non_camel_case_types)]
 
-use serde;
-use serde_derive;
-use serde_json;
+use serde_derive::*;
 
 use std::collections::HashMap as Map;
 
-pub use crate::raw_debug_protocol::{
+pub use raw_debug_protocol::{
     Breakpoint, BreakpointEventBody, CompletionsArguments, CompletionsResponseBody, ContinueArguments,
     ContinueResponseBody, ContinuedEventBody, DisconnectArguments, EvaluateArguments, EvaluateResponseBody,
     ExitedEventBody, InitializeRequestArguments, ModuleEventBody, NextArguments, OutputEventBody, PauseArguments,

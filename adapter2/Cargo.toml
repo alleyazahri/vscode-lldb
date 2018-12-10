@@ -5,7 +5,7 @@ authors = ["Vadim Chugunov <vadimcn@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-debug-protocol = { path = "deps/debug-protocol" }
+raw_debug_protocol = { package = "debug-protocol", path = "deps/debug-protocol" }
 lldb = { path = "deps/lldb" }
 serde = "1.0.66"
 serde_derive = "1.0.66"

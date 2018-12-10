@@ -93,7 +93,7 @@ fn create_regexes() -> [Regex; 3] {
     ]
 }
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref EXPRESSIONS: [Regex; 3] = create_regexes();
     static ref MAYBE_QUALIFIED_IDENT: &'static Regex = &EXPRESSIONS[0];
     static ref PREPROCESS_SIMPLE: &'static Regex = &EXPRESSIONS[1];

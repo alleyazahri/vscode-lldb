@@ -1,6 +1,7 @@
+use serde_derive::*;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::rc::Rc;
 use std::str;
@@ -173,7 +174,8 @@ impl DisassembledRange {
                 }
             }
             None => None,
-        }.unwrap_or("No Symbol Info".into());
+        }
+        .unwrap_or("No Symbol Info".into());
 
         let mut text = String::new();
         writeln!(text, "; {}", description);
