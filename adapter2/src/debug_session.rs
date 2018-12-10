@@ -286,6 +286,9 @@ impl DebugSession {
                 RequestArguments::source(args) =>
                     self.handle_source(args)
                         .map(|r| ResponseBody::source(r)),
+                RequestArguments::completions(args) =>
+                    self.handle_completions(args)
+                        .map(|r| ResponseBody::completions(r)),
                 RequestArguments::disconnect(args) =>
                     self.handle_disconnect(Some(args))
                         .map(|_| ResponseBody::disconnect),
@@ -376,12 +379,12 @@ impl DebugSession {
 
         let caps = Capabilities {
             supports_configuration_done_request: true,
-            supports_evaluate_for_hovers: false, // TODO
+            supports_evaluate_for_hovers: true,
             supports_function_breakpoints: true,
             supports_conditional_breakpoints: true,
             supports_hit_conditional_breakpoints: true,
             supports_set_variable: true,
-            supports_completions_request: false, // TODO
+            supports_completions_request: true,
             supports_delayed_stack_trace_loading: true,
             support_terminate_debuggee: true,
             supports_log_points: true,
@@ -1732,6 +1735,19 @@ impl DebugSession {
             content: dasm.get_source_text(),
             mime_type: Some("text/x-lldb.disassembly".to_owned()),
         })
+    }
+
+    fn handle_completions(&mut self, args: CompletionsArguments) -> Result<CompletionsResponseBody, Error> {
+        let interpreter = self.debugger.command_interpreter();
+        let mut matches = interpreter.handle_completions(&args.text, (args.column - 1) as u32, 0, None);
+        let targets = matches
+            .drain(..)
+            .map(|m| CompletionItem {
+                label: m,
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        Ok(CompletionsResponseBody { targets })
     }
 
     fn handle_disconnect(&mut self, args: Option<DisconnectArguments>) -> Result<(), Error> {

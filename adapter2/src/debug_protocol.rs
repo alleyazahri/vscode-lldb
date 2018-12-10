@@ -5,7 +5,7 @@ use serde_derive::*;
 use std::collections::HashMap as Map;
 
 pub use raw_debug_protocol::{
-    Breakpoint, BreakpointEventBody, CompletionsArguments, CompletionsResponseBody, ContinueArguments,
+    Breakpoint, BreakpointEventBody, CompletionItem, CompletionsArguments, CompletionsResponseBody, ContinueArguments,
     ContinueResponseBody, ContinuedEventBody, DisconnectArguments, EvaluateArguments, EvaluateResponseBody,
     ExitedEventBody, InitializeRequestArguments, ModuleEventBody, NextArguments, OutputEventBody, PauseArguments,
     RunInTerminalRequestArguments, Scope, ScopesArguments, ScopesResponseBody, SetBreakpointsArguments,

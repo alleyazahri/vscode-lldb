@@ -1,6 +1,6 @@
 #![feature(try_trait)]
 #![feature(fnbox)]
-//#![allow(unused)]
+#![allow(unused)]
 
 use std::net;
 

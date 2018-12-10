@@ -111,3 +111,15 @@ impl Default for OutputEventBody {
         }
     }
 }
+
+impl Default for CompletionItem {
+    fn default() -> Self {
+        CompletionItem {
+            label: String::new(),
+            length: None,
+            start: None,
+            text: None,
+            type_: None,
+        }
+    }
+}
