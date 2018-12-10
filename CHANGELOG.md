@@ -1,5 +1,10 @@
 # What's New
 
+## 1.2.0
+The major change in this release is the introduction of "bundled" LLDB: previously CodeLLDB had always used an externally
+provided LLDB.   However, as Rust debugging story evolves, the older version of LLDB can no longer handle debugging information
+emitted by the Rust compiler.
+
 ## 1.1.0
 - The minimum supported VSCode version is now 1.23.
 - Due to deprecation of VSCode's `previewHtml` command, the signature of `display_html` API had to change: HTML markup
