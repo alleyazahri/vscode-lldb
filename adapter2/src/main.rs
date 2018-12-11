@@ -11,11 +11,18 @@ fn main() -> Result<(), failure::Error> {
     let matches = App::new("codelldb")
         .arg(Arg::with_name("port").long("port").takes_value(true))
         .arg(Arg::with_name("multi-session").long("multi-session"))
-        .arg(Arg::with_name("preload").long("preload").multiple(true).takes_value(true))
+        .arg(
+            Arg::with_name("preload")
+                .long("preload")
+                .multiple(true)
+                .takes_value(true),
+        )
+        .arg(Arg::with_name("params").long("params").takes_value(true))
         .get_matches();
 
     let multi_session = matches.is_present("multi-session");
     let port = matches.value_of("port").map(|s| s.parse().unwrap()).unwrap_or(0);
+    let adapter_params = matches.value_of("params");
 
     unsafe {
         for dylib in matches.values_of("preload").unwrap_or_default() {
@@ -34,8 +41,8 @@ fn main() -> Result<(), failure::Error> {
         let codelldb = load_library(&codelldb_path, false);
 
         // Find codelldb's entry point and call it.
-        let entry: unsafe extern "C" fn(u16, bool) = mem::transmute(find_symbol(codelldb, "entry"));
-        entry(port, multi_session);
+        let entry: unsafe extern "C" fn(u16, bool, Option<&str>) = mem::transmute(find_symbol(codelldb, "entry"));
+        entry(port, multi_session, adapter_params);
     }
 
     Ok(())

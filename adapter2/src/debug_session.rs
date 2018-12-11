@@ -12,10 +12,12 @@ use std::rc::Rc;
 use std::str;
 use std::sync::{Arc, Mutex, Weak};
 use std::thread;
+use std::time;
 
 use futures;
 use futures::prelude::*;
 use log::{debug, error, info};
+use serde_derive::*;
 use serde_json;
 
 use crate::cancellation::{CancellationSource, CancellationToken};
@@ -29,6 +31,13 @@ use crate::python::{self, PythonValue};
 use crate::source_map::{self, is_same_path, normalize_path};
 use crate::terminal::Terminal;
 use lldb::*;
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AdapterParameters {
+    evaluation_timeout: Option<u32>,
+    suppress_missing_source_files: Option<bool>,
+}
 
 type AsyncResponder = FnBox(&mut DebugSession) -> Result<ResponseBody, Error>;
 
@@ -108,9 +117,10 @@ pub struct DebugSession {
     selected_frame_changed: bool,
     global_format: Format,
     show_disassembly: Option<bool>,
-    suppress_missing_files: bool,
     deref_pointers: bool,
     container_summary: bool,
+    suppress_missing_files: bool,
+    evaluation_timeout: time::Duration,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -118,7 +128,9 @@ pub struct DebugSession {
 unsafe impl Send for DebugSession {}
 
 impl DebugSession {
-    pub fn new() -> impl Stream<Item = ProtocolMessage, Error = ()> + Sink<SinkItem = ProtocolMessage, SinkError = ()> {
+    pub fn new(
+        parameters: AdapterParameters,
+    ) -> impl Stream<Item = ProtocolMessage, Error = ()> + Sink<SinkItem = ProtocolMessage, SinkError = ()> {
         let (incoming_send, incoming_recv) = std::sync::mpsc::sync_channel::<InputEvent>(100);
         let (outgoing_send, outgoing_recv) = futures::sync::mpsc::channel::<ProtocolMessage>(100);
 
@@ -176,9 +188,11 @@ impl DebugSession {
 
             global_format: Format::Default,
             show_disassembly: None,
-            suppress_missing_files: true,
             deref_pointers: true,
             container_summary: true,
+
+            suppress_missing_files: parameters.suppress_missing_source_files.unwrap_or(true),
+            evaluation_timeout: time::Duration::from_millis(parameters.evaluation_timeout.unwrap_or(100).into()),
         };
 
         let debug_session = Arc::new(Mutex::new(debug_session));
@@ -670,9 +684,7 @@ impl DebugSession {
         ) -> bool {
             let debugger = process.target().debugger();
             let interpreter = debugger.command_interpreter();
-            debug!("{} {:?}", thread.is_valid(), thread);
             let frame = thread.frame_at_index(0);
-            debug!("{} {:?}", frame.is_valid(), frame);
             let context = SBExecutionContext::from_frame(&frame);
             match python::evaluate(&interpreter, &expr, true, &context) {
                 Err(_) => true, // Stop on evluation errors
@@ -685,6 +697,32 @@ impl DebugSession {
                     _ => true,
                 },
             }
+        }
+
+        fn replace_logpoint_expressions<F>(message: &str, f: F) -> String
+        where
+            F: Fn(&str) -> String,
+        {
+            let mut start = 0;
+            let mut nesting = 0;
+            let mut result = String::new();
+            for (idx, ch) in message.char_indices() {
+                if ch == '{' {
+                    if nesting == 0 {
+                        result.push_str(&message[start..idx]);
+                        start = idx + 1;
+                    }
+                    nesting += 1;
+                } else if ch == '}' && nesting > 0 {
+                    nesting -= 1;
+                    if nesting == 0 {
+                        result.push_str(&f(&message[start..idx]));
+                        start = idx + 1;
+                    }
+                }
+            }
+            result.push_str(&message[start..(message.len())]);
+            result
         }
 
         let py_condition = if let Some(ref condition) = bp_info.condition {
@@ -705,13 +743,11 @@ impl DebugSession {
         bp_info.breakpoint.set_callback(move |process, thread, location| {
             debug!("Callback for breakpoint location {:?}", location);
             if let Some(self_ref) = self_ref.upgrade() {
-                let is_valid_location = {
-                    let session = self_ref.lock().unwrap();
-                    let breakpoints = session.breakpoints.borrow();
-                    let bp_info = breakpoints.breakpoint_infos.get(&location.breakpoint().id()).unwrap();
-                    session.is_valid_source_bp_location(&location, bp_info)
-                };
-                if is_valid_location {
+                let mut session = self_ref.lock().unwrap();
+                let breakpoints = session.breakpoints.borrow();
+                let bp_info = breakpoints.breakpoint_infos.get(&location.breakpoint().id()).unwrap();
+
+                let should_stop = if session.is_valid_source_bp_location(&location, bp_info) {
                     if let Some(ref py_condition) = py_condition {
                         // Evaluate Python expressions on the main thread,
                         // to avoid all sorts of unpleasant deadlocks in LLDB.
@@ -724,13 +760,26 @@ impl DebugSession {
                 } else {
                     location.set_enabled(false);
                     false
+                };
+
+                // If we are supposed to stop and there's a log message, evaluate and print the message but don't stop.
+                if should_stop {
+                    if let Some(ref log_message) = bp_info.log_message {
+                        let message = replace_logpoint_expressions(&log_message, |expr| {
+                            let frame = thread.frame_at_index(0);
+                            let result = session.evaluate_expr_in_frame(expr, Some(&frame));
+                            format!("{:?}", result)
+                        });
+                        //session.console_message(message);
+                        return false;
+                    }
                 }
+                // TODO: hit count & log_message
+                should_stop
             } else {
-                false
+                false // Can't upgrade weak ref to strong - the session must already be gone.  Don't stop.
             }
         });
-
-        // TODO: hit count & log_message
     }
 
     fn is_valid_source_bp_location(&self, bp_loc: &SBBreakpointLocation, bp_info: &BreakpointInfo) -> bool {
@@ -759,7 +808,7 @@ impl DebugSession {
         let (sender, receiver) = std::sync::mpsc::channel::<R>();
         let cb: Box<FnBox() + Send> = Box::new(move || sender.send(f()).unwrap());
         // Casting away cb's lifetime.
-        // This is safe, because we are blocking the current thread until f() returns.
+        // This is safe, because we are blocking current thread until f() returns.
         let cb: Box<FnBox() + Send + 'static> = unsafe { std::mem::transmute(cb) };
         self_ref
             .lock()
@@ -1307,6 +1356,8 @@ impl DebugSession {
     ) -> Vec<Variable> {
         let mut variables = vec![];
         let mut variables_idx = HashMap::new();
+
+        let start = time::SystemTime::now();
         for var in vars_iter {
             let name = var.name().unwrap_or_default();
             let dtype = var.type_name();
@@ -1338,6 +1389,17 @@ impl DebugSession {
             } else {
                 variables_idx.insert(variable.name.clone(), variables.len());
                 variables.push(variable);
+            }
+
+            // Bail out if timeout has expired.
+            if start.elapsed().unwrap_or_default() > self.evaluation_timeout {
+                self.console_error("Child list expansion has timed out.");
+                variables.push(Variable {
+                    name: "[timed out]".to_owned(),
+                    type_: Some("Expansion of this list has timed out.".to_owned()),
+                    ..Default::default()
+                });
+                break;
             }
         }
         variables

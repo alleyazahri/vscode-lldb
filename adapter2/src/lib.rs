@@ -29,9 +29,14 @@ mod terminal;
 mod wire_protocol;
 
 #[no_mangle]
-pub extern "C" fn entry(port: u16, multi_session: bool) {
+pub extern "C" fn entry(port: u16, multi_session: bool, adapter_params: Option<&str>) {
     env_logger::Builder::from_default_env().init();
     SBDebugger::initialize();
+
+    let adapter_params: debug_session::AdapterParameters = match adapter_params {
+        Some(s) => serde_json::from_str(s).unwrap(),
+        None => Default::default(),
+    };
 
     let localhost = net::Ipv4Addr::new(127, 0, 0, 1);
     let addr = net::SocketAddr::new(localhost.into(), port);
@@ -51,9 +56,9 @@ pub extern "C" fn entry(port: u16, multi_session: bool) {
     };
 
     let server = server
-        .for_each(|conn| {
+        .for_each(move |conn| {
             conn.set_nodelay(true).unwrap();
-            run_debug_session(conn)
+            run_debug_session(conn, adapter_params.clone())
         })
         .then(|r| {
             info!("### server resolved: {:?}", r);
@@ -67,13 +72,13 @@ pub extern "C" fn entry(port: u16, multi_session: bool) {
 }
 
 fn run_debug_session(
-    stream: impl AsyncRead + AsyncWrite + Send + 'static,
+    stream: impl AsyncRead + AsyncWrite + Send + 'static, adapter_params: debug_session::AdapterParameters,
 ) -> impl Future<Item = (), Error = io::Error> {
     future::lazy(|| {
         debug!("New debug session");
 
         let (to_client, from_client) = wire_protocol::Codec::new().framed(stream).split();
-        let (to_session, from_session) = debug_session::DebugSession::new().split();
+        let (to_session, from_session) = debug_session::DebugSession::new(adapter_params).split();
 
         let client_to_session = from_client
             .map_err(|_| ()) //.

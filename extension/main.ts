@@ -109,8 +109,8 @@ class Extension implements DebugConfigurationProvider {
         if (!this.checkPrerequisites(folder))
             return undefined;
 
-        let workspaceConfig = workspace.getConfiguration('lldb.launch', folder ? folder.uri : undefined);
-        launchConfig = this.mergeWorkspaceSettings(launchConfig, workspaceConfig);
+        let launchDefaults = workspace.getConfiguration('lldb.launch', folder ? folder.uri : undefined);
+        launchConfig = this.mergeWorkspaceSettings(launchDefaults, launchConfig);
 
         let dbgconfigConfig = workspace.getConfiguration('lldb.dbgconfig', folder ? folder.uri : undefined);
         launchConfig = util.expandDbgConfig(launchConfig, dbgconfigConfig);
@@ -141,7 +141,8 @@ class Extension implements DebugConfigurationProvider {
             launchConfig.sourceLanguages.push('rust');
         }
 
-        let adapterParams: any = {};
+        let lldbConfig = workspace.getConfiguration('lldb', folder ? folder.uri : undefined);
+        let adapterParams: any = this.getAdapterParameters(lldbConfig);
         if (launchConfig.sourceLanguages) {
             adapterParams.sourceLanguages = launchConfig.sourceLanguages;
             delete launchConfig.sourceLanguages;
@@ -165,7 +166,7 @@ class Extension implements DebugConfigurationProvider {
     }
 
     // Merge launch configuration with workspace settings
-    mergeWorkspaceSettings(debugConfig: DebugConfiguration, launchConfig: WorkspaceConfiguration): DebugConfiguration {
+    mergeWorkspaceSettings(launchConfig: WorkspaceConfiguration, debugConfig: DebugConfiguration): DebugConfiguration {
         let mergeConfig = (key: string, reverse: boolean = false) => {
             let value1 = util.getConfigNoDefault(launchConfig, key);
             let value2 = debugConfig[key];
@@ -186,6 +187,13 @@ class Extension implements DebugConfigurationProvider {
         mergeConfig('sourceLanguages');
         mergeConfig('debugServer');
         return debugConfig;
+    }
+
+    getAdapterParameters(config: WorkspaceConfiguration, params: Dict<any> = {}): Dict<any> {
+        util.setIfDefined(params, config, 'reverseDebugging');
+        util.setIfDefined(params, config, 'suppressMissingSourceFiles');
+        util.setIfDefined(params, config, 'evaluationTimeout');
+        return params;
     }
 
     async getCargoLaunchConfigs() {
