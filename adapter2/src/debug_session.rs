@@ -74,12 +74,6 @@ enum Container {
     SBValue(SBValue),
 }
 
-enum ExprType {
-    Native,
-    Python,
-    Simple,
-}
-
 struct BreakpointsState {
     source: HashMap<PathBuf, HashMap<i64, BreakpointID>>,
     assembly: HashMap<Handle, HashMap<i64, BreakpointID>>,
@@ -115,10 +109,13 @@ pub struct DebugSession {
     exit_commands: Option<Vec<String>>,
     terminal: Option<Terminal>,
     selected_frame_changed: bool,
+
+    default_expr_type: Expressions,
     global_format: Format,
     show_disassembly: Option<bool>,
     deref_pointers: bool,
     container_summary: bool,
+
     suppress_missing_files: bool,
     evaluation_timeout: time::Duration,
 }
@@ -186,6 +183,7 @@ impl DebugSession {
             terminal: None,
             selected_frame_changed: false,
 
+            default_expr_type: Expressions::Simple,
             global_format: Format::Default,
             show_disassembly: None,
             deref_pointers: true,
@@ -682,27 +680,83 @@ impl DebugSession {
     }
 
     fn init_bp_actions(&self, bp_info: &BreakpointInfo) {
-        // Evaluate python expression and turn result into a boolean.
-        fn evaluate_python_bp_condition(
-            expr: &str, process: &SBProcess, thread: &SBThread, _location: &SBBreakpointLocation,
-        ) -> bool {
-            let debugger = process.target().debugger();
-            let interpreter = debugger.command_interpreter();
-            let frame = thread.frame_at_index(0);
-            let context = SBExecutionContext::from_frame(&frame);
-            match python::evaluate(&interpreter, &expr, true, &context) {
-                Err(_) => true, // Stop on evluation errors
-                Ok(val) => match val {
-                    PythonValue::SBValue(val) => match val.try_value_as_unsigned() {
-                        Ok(val) => val != 0,
-                        Err(_) => true,
-                    },
-                    PythonValue::Bool(val) => val,
-                    _ => true,
+        // Determine conditional expression type:
+        let py_condition = if let Some(ref condition) = bp_info.condition {
+            let (expr, ty) = self.get_expression_type(condition);
+            match ty {
+                // if native, use that directly,
+                Expressions::Native => {
+                    bp_info.breakpoint.set_condition(expr);
+                    None
+                }
+                // otherwise, we'll need to evaluate it ourselves in the breakpoint callback.
+                Expressions::Simple => Some(expressions::preprocess_simple_expr(expr)),
+                Expressions::Python => Some(expressions::preprocess_python_expr(expr)),
+            }
+        } else {
+            None
+        };
+
+        let self_ref = self.self_ref.clone();
+        bp_info.breakpoint.set_callback(move |process, thread, location| {
+            debug!("Callback for breakpoint location {:?}", location);
+            if let Some(self_ref) = self_ref.upgrade() {
+                let mut session = self_ref.lock().unwrap();
+                let breakpoints = session.breakpoints.borrow();
+                let bp_info = breakpoints.breakpoint_infos.get(&location.breakpoint().id()).unwrap();
+
+                if !session.is_valid_source_bp_location(&location, bp_info) {
+                    location.set_enabled(false);
+                    return false;
+                }
+
+                if let Some(ref py_condition) = py_condition {
+                    if !session.evaluate_python_bp_condition(py_condition, process, thread, location) {
+                        return false;
+                    }
+                }
+
+                // If we are supposed to stop and there's a log message, evaluate and print the message, but don't stop.
+                if let Some(ref log_message) = bp_info.log_message {
+                    let frame = thread.frame_at_index(0);
+                    let message = session.format_logpoint_message(log_message, &frame);
+                    session.console_message(message);
+                    return false;
+                }
+
+                // TODO: hit count
+                true
+            } else {
+                false // Can't upgrade weak ref to strong - the session must already be gone.  Don't stop.
+            }
+        });
+    }
+
+    // Evaluate python expression and turn result into a boolean.
+    fn evaluate_python_bp_condition(
+        &self, expr: &str, process: &SBProcess, thread: &SBThread, _location: &SBBreakpointLocation,
+    ) -> bool {
+        let debugger = process.target().debugger();
+        let interpreter = debugger.command_interpreter();
+        let frame = thread.frame_at_index(0);
+        let context = SBExecutionContext::from_frame(&frame);
+        match python::evaluate(&interpreter, &expr, true, &context) {
+            Ok(val) => match val {
+                PythonValue::SBValue(val) => match val.try_value_as_unsigned() {
+                    Ok(val) => val != 0,
+                    Err(_) => true,
                 },
+                PythonValue::Bool(val) => val,
+                _ => true,
+            },
+            Err(err) => {
+                self.console_error(err.to_string());
+                true // Stop on evluation errors
             }
         }
-
+    }
+    // Replaces {expression}'s in log_message with results of their evaluations.
+    fn format_logpoint_message(&self, log_message: &str, frame: &SBFrame) -> String {
         // Finds expressions ({...}) in message and invokes the callback on them.
         fn replace_logpoint_expressions<F>(message: &str, f: F) -> String
         where
@@ -730,62 +784,24 @@ impl DebugSession {
             result
         }
 
-        // Determine conditional expression type:
-        let py_condition = if let Some(ref condition) = bp_info.condition {
-            let (expr, ty) = self.get_expression_type(condition);
-            match ty {
-                // if native, use that directly,
-                ExprType::Native => {
-                    bp_info.breakpoint.set_condition(expr);
-                    None
-                }
-                // otherwise, we'll need to evaluate it ourselves in the breakpoint callback.
-                ExprType::Simple => Some(expressions::preprocess_simple_expr(expr)),
-                ExprType::Python => Some(expressions::preprocess_python_expr(expr)),
-            }
-        } else {
-            None
-        };
-
-        let self_ref = self.self_ref.clone();
-        bp_info.breakpoint.set_callback(move |process, thread, location| {
-            debug!("Callback for breakpoint location {:?}", location);
-            if let Some(self_ref) = self_ref.upgrade() {
-                let mut session = self_ref.lock().unwrap();
-                let breakpoints = session.breakpoints.borrow();
-                let bp_info = breakpoints.breakpoint_infos.get(&location.breakpoint().id()).unwrap();
-
-                if !session.is_valid_source_bp_location(&location, bp_info) {
-                    location.set_enabled(false);
-                    return false;
-                }
-
-                if let Some(ref py_condition) = py_condition {
-                    if !evaluate_python_bp_condition(py_condition, process, thread, location) {
-                        return false;
+        replace_logpoint_expressions(&log_message, |expr| {
+            let (expr, expr_format) = self.get_expr_format(expr);
+            let expr_format = expr_format.unwrap_or(self.global_format);
+            match self.evaluate_expr_in_frame(expr, Some(frame)) {
+                Ok(result) => match result {
+                    PythonValue::SBValue(sbval) => {
+                        self.get_var_value_str(&sbval, expr_format, sbval.num_children() > 0)
                     }
+                    PythonValue::Int(val) => val.to_string(),
+                    PythonValue::Bool(val) => val.to_string(),
+                    PythonValue::String(s) | PythonValue::Object(s) => s,
+                },
+                Err(err) => {
+                    self.console_error(err.to_string());
+                    "{Error}".to_string()
                 }
-
-                // If we are supposed to stop and there's a log message, evaluate and print the message, but don't stop.
-                if let Some(ref log_message) = bp_info.log_message {
-                    let message = replace_logpoint_expressions(&log_message, |expr| {
-                        let frame = thread.frame_at_index(0);
-                        // match session.evaluate_expr_in_frame2(expr, Some(&frame)) {
-                        //     Ok(eval_result) => eval_result.result,
-                        //     Err(error) => error.to_string()
-                        // }
-                        String::new()
-                    });
-                    session.console_message(message);
-                    return false;
-                }
-
-                // TODO: hit count
-                true
-            } else {
-                false // Can't upgrade weak ref to strong - the session must already be gone.  Don't stop.
             }
-        });
+        })
     }
 
     fn is_valid_source_bp_location(&self, bp_loc: &SBBreakpointLocation, bp_info: &BreakpointInfo) -> bool {
@@ -826,6 +842,9 @@ impl DebugSession {
     }
 
     fn handle_launch(&mut self, args: LaunchRequestArguments) -> Result<Box<AsyncResponder>, Error> {
+        if let Some(expressions) = args.expressions {
+            self.default_expr_type = expressions;
+        }
         if let Some(true) = &args.custom {
             return self.handle_custom_launch(args);
         }
@@ -924,6 +943,9 @@ impl DebugSession {
     }
 
     fn handle_attach(&mut self, args: AttachRequestArguments) -> Result<Box<AsyncResponder>, Error> {
+        if let Some(expressions) = args.expressions {
+            self.default_expr_type = expressions;
+        }
         if args.program.is_none() && args.pid.is_none() {
             return Err(Error::UserError(
                 r#"Either "program" or "pid" is required for attach."#.into(),
@@ -1577,38 +1599,34 @@ impl DebugSession {
                 expression = &expression[1..]; // drop leading '?'
             }
         }
-        // Expression
-        self.evaluate_expr_in_frame2(expression, frame.as_ref())
-    }
 
-    fn evaluate_expr_in_frame2(
-        &mut self, expression: &str, frame: Option<&SBFrame>,
-    ) -> Result<EvaluateResponseBody, Error> {
+        // Expression
         let (expression, expr_format) = self.get_expr_format(expression);
         let expr_format = expr_format.unwrap_or(self.global_format);
-        self.evaluate_expr_in_frame(expression, frame).map(|val| match val {
-            PythonValue::SBValue(sbval) => {
-                let handle = self.get_var_handle(None, expression, &sbval);
-                EvaluateResponseBody {
-                    result: self.get_var_value_str(&sbval, expr_format, handle.is_some()),
-                    type_: sbval.type_name().map(|s| s.to_owned()),
-                    variables_reference: handles::to_i64(handle),
-                    ..Default::default()
+        self.evaluate_expr_in_frame(expression, frame.as_ref())
+            .map(|val| match val {
+                PythonValue::SBValue(sbval) => {
+                    let handle = self.get_var_handle(None, expression, &sbval);
+                    EvaluateResponseBody {
+                        result: self.get_var_value_str(&sbval, expr_format, handle.is_some()),
+                        type_: sbval.type_name().map(|s| s.to_owned()),
+                        variables_reference: handles::to_i64(handle),
+                        ..Default::default()
+                    }
                 }
-            }
-            PythonValue::Int(val) => EvaluateResponseBody {
-                result: val.to_string(),
-                ..Default::default()
-            },
-            PythonValue::Bool(val) => EvaluateResponseBody {
-                result: val.to_string(),
-                ..Default::default()
-            },
-            PythonValue::String(s) | PythonValue::Object(s) => EvaluateResponseBody {
-                result: s,
-                ..Default::default()
-            },
-        })
+                PythonValue::Int(val) => EvaluateResponseBody {
+                    result: val.to_string(),
+                    ..Default::default()
+                },
+                PythonValue::Bool(val) => EvaluateResponseBody {
+                    result: val.to_string(),
+                    ..Default::default()
+                },
+                PythonValue::String(s) | PythonValue::Object(s) => EvaluateResponseBody {
+                    result: s,
+                    ..Default::default()
+                },
+            })
     }
 
     // Evaluates expr in the context of frame (or in global context if frame is None)
@@ -1616,7 +1634,7 @@ impl DebugSession {
     fn evaluate_expr_in_frame(&self, expression: &str, frame: Option<&SBFrame>) -> Result<PythonValue, Error> {
         let (expr, ty) = self.get_expression_type(expression);
         match ty {
-            ExprType::Native => {
+            Expressions::Native => {
                 let result = match frame {
                     Some(frame) => frame.evaluate_expression(expr),
                     None => self.target.evaluate_expression(expr),
@@ -1628,7 +1646,7 @@ impl DebugSession {
                     Err(error.into())
                 }
             }
-            ExprType::Python => {
+            Expressions::Python => {
                 let pp_expr = expressions::preprocess_python_expr(expr);
                 let interpreter = self.debugger.command_interpreter();
                 let context = self.context_from_frame(frame);
@@ -1637,7 +1655,7 @@ impl DebugSession {
                     Err(s) => Err(Error::UserError(s)),
                 }
             }
-            ExprType::Simple => {
+            Expressions::Simple => {
                 let pp_expr = expressions::preprocess_simple_expr(expr);
                 let interpreter = self.debugger.command_interpreter();
                 let context = self.context_from_frame(frame);
@@ -1650,16 +1668,15 @@ impl DebugSession {
     }
 
     // Classify expression by evaluator type
-    fn get_expression_type<'a>(&self, expr: &'a str) -> (&'a str, ExprType) {
+    fn get_expression_type<'a>(&self, expr: &'a str) -> (&'a str, Expressions) {
         if expr.starts_with("/nat ") {
-            (&expr[5..], ExprType::Native)
+            (&expr[5..], Expressions::Native)
         } else if expr.starts_with("/py ") {
-            (&expr[4..], ExprType::Python)
+            (&expr[4..], Expressions::Python)
         } else if expr.starts_with("/se ") {
-            (&expr[4..], ExprType::Simple)
+            (&expr[4..], Expressions::Simple)
         } else {
-            // TODO: expressions config
-            (expr, ExprType::Simple)
+            (expr, self.default_expr_type)
         }
     }
 
