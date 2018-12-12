@@ -37,6 +37,7 @@ use lldb::*;
 pub struct AdapterParameters {
     evaluation_timeout: Option<u32>,
     suppress_missing_source_files: Option<bool>,
+    source_languages: Option<Vec<String>>,
 }
 
 type AsyncResponder = FnBox(&mut DebugSession) -> Result<ResponseBody, Error>;
@@ -110,12 +111,13 @@ pub struct DebugSession {
     terminal: Option<Terminal>,
     selected_frame_changed: bool,
 
-    default_expr_type: Expressions,
     global_format: Format,
     show_disassembly: Option<bool>,
     deref_pointers: bool,
     container_summary: bool,
 
+    default_expr_type: Expressions,
+    source_languages: Vec<String>,
     suppress_missing_files: bool,
     evaluation_timeout: time::Duration,
 }
@@ -183,12 +185,13 @@ impl DebugSession {
             terminal: None,
             selected_frame_changed: false,
 
-            default_expr_type: Expressions::Simple,
             global_format: Format::Default,
             show_disassembly: None,
             deref_pointers: true,
             container_summary: true,
 
+            default_expr_type: Expressions::Simple,
+            source_languages: parameters.source_languages.unwrap_or(vec!["cpp".into()]),
             suppress_missing_files: parameters.suppress_missing_source_files.unwrap_or(true),
             evaluation_timeout: time::Duration::from_millis(parameters.evaluation_timeout.unwrap_or(100).into()),
         };
@@ -403,6 +406,7 @@ impl DebugSession {
             supports_delayed_stack_trace_loading: true,
             support_terminate_debuggee: true,
             supports_log_points: true,
+            exception_breakpoint_filters: self.get_exception_filters(&self.source_languages),
         };
         Ok(caps)
     }
@@ -675,7 +679,32 @@ impl DebugSession {
         Ok(SetBreakpointsResponseBody { breakpoints: result })
     }
 
+    fn get_exception_filters(&self, source_langs: &[String]) -> Vec<ExceptionBreakpointsFilter> {
+        let mut filters = vec![];
+        if source_langs.iter().any(|x| x == "cpp") {
+            filters.push(ExceptionBreakpointsFilter {
+                filter: "cpp_throw".into(),
+                label: "C++: on throw".into(),
+                default: true,
+            });
+            filters.push(ExceptionBreakpointsFilter {
+                filter: "cpp_catch".into(),
+                label: "C++: on catch".into(),
+                default: false,
+            });
+        }
+        if source_langs.iter().any(|x| x == "rust") {
+            filters.push(ExceptionBreakpointsFilter {
+                filter: "rust_panic".into(),
+                label: "Rust: on panic".into(),
+                default: true,
+            });
+        }
+        filters
+    }
+
     fn handle_set_exception_breakpoints(&mut self, _args: SetExceptionBreakpointsArguments) -> Result<(), Error> {
+        // TODO
         Ok(())
     }
 

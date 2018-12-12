@@ -188,6 +188,15 @@ pub struct Capabilities {
     pub support_terminate_debuggee: bool,
     pub supports_delayed_stack_trace_loading: bool,
     pub supports_log_points: bool,
+    pub exception_breakpoint_filters: Vec<ExceptionBreakpointsFilter>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ExceptionBreakpointsFilter {
+    pub filter: String,
+    pub label: String,
+    pub default: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
