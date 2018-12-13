@@ -93,6 +93,11 @@ impl SBTarget {
             })
         })
     }
+    pub fn breakpoint_create_for_exception(&self, language: LanguageType, catch_bp: bool, throw_bp: bool) -> SBBreakpoint {
+        cpp!(unsafe [self as "SBTarget*", language as "lldb::LanguageType", catch_bp as "bool", throw_bp as "bool"] -> SBBreakpoint as "SBBreakpoint" {
+            return self->BreakpointCreateForException(language, catch_bp, throw_bp);
+        })
+    }
     pub fn breakpoint_create_by_address(&self, address: &SBAddress) -> SBBreakpoint {
         cpp!(unsafe [self as "SBTarget*", address as "SBAddress*"] -> SBBreakpoint as "SBBreakpoint" {
             return self->BreakpointCreateBySBAddress(*address);
@@ -142,4 +147,55 @@ impl fmt::Debug for SBTarget {
             })
         })
     }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[repr(u32)]
+#[allow(non_camel_case_types)]
+pub enum LanguageType {
+  Unknown = 0x0000,        // Unknown or invalid language value.
+  C89 = 0x0001,            // ISO C:1989.
+  C = 0x0002,              // Non-standardized C, such as K&R.
+  Ada83 = 0x0003,          // ISO Ada:1983.
+  C_plus_plus = 0x0004,    // ISO C++:1998.
+  Cobol74 = 0x0005,        // ISO Cobol:1974.
+  Cobol85 = 0x0006,        // ISO Cobol:1985.
+  Fortran77 = 0x0007,      // ISO Fortran 77.
+  Fortran90 = 0x0008,      // ISO Fortran 90.
+  Pascal83 = 0x0009,       // ISO Pascal:1983.
+  Modula2 = 0x000a,        // ISO Modula-2:1996.
+  Java = 0x000b,           // Java.
+  C99 = 0x000c,            // ISO C:1999.
+  Ada95 = 0x000d,          // ISO Ada:1995.
+  Fortran95 = 0x000e,      // ISO Fortran 95.
+  PLI = 0x000f,            // ANSI PL/I:1976.
+  ObjC = 0x0010,           // Objective-C.
+  ObjC_plus_plus = 0x0011, // Objective-C++.
+  UPC = 0x0012,            // Unified Parallel C.
+  D = 0x0013,              // D.
+  Python = 0x0014,         // Python.
+  // NOTE: The below are DWARF5 constants, subject to change upon
+  // completion of the DWARF5 specification
+  OpenCL = 0x0015,         // OpenCL.
+  Go = 0x0016,             // Go.
+  Modula3 = 0x0017,        // Modula 3.
+  Haskell = 0x0018,        // Haskell.
+  C_plus_plus_03 = 0x0019, // ISO C++:2003.
+  C_plus_plus_11 = 0x001a, // ISO C++:2011.
+  OCaml = 0x001b,          // OCaml.
+  Rust = 0x001c,           // Rust.
+  C11 = 0x001d,            // ISO C:2011.
+  Swift = 0x001e,          // Swift.
+  Julia = 0x001f,          // Julia.
+  Dylan = 0x0020,          // Dylan.
+  C_plus_plus_14 = 0x0021, // ISO C++:2014.
+  Fortran03 = 0x0022,      // ISO Fortran 2003.
+  Fortran08 = 0x0023,      // ISO Fortran 2008.
+  // Vendor Extensions
+  // Note: Language::GetNameForLanguageType
+  // assumes these can be used as indexes into array language_names, and
+  // Language::SetLanguageFromCString and Language::AsCString
+  // assume these can be used as indexes into array g_languages.
+  MipsAssembler = 0x0024,   // Mips_Assembler.
+  ExtRenderScript = 0x0025, // RenderScript.
 }

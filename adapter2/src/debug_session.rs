@@ -679,6 +679,35 @@ impl DebugSession {
         Ok(SetBreakpointsResponseBody { breakpoints: result })
     }
 
+    fn handle_set_exception_breakpoints(&mut self, args: SetExceptionBreakpointsArguments) -> Result<(), Error> {
+        let mut breakpoints = self.breakpoints.borrow_mut();
+        breakpoints.breakpoint_infos.retain(|id, bp_info| {
+            if let BreakpointKind::Exception = bp_info.kind {
+                self.target.breakpoint_delete(bp_info.id);
+                false
+            } else {
+                true
+            }
+        });
+        drop(breakpoints);
+
+        for bp in self.set_exception_breakpoints(&args.filters) {
+            let bp_info = BreakpointInfo {
+                id: bp.id(),
+                breakpoint: bp,
+                kind: BreakpointKind::Exception,
+                condition: None,
+                log_message: None,
+                ignore_count: 0,
+            };
+            self.breakpoints
+                .borrow_mut()
+                .breakpoint_infos
+                .insert(bp_info.id, bp_info);
+        }
+        Ok(())
+    }
+
     fn get_exception_filters(&self, source_langs: &[String]) -> Vec<ExceptionBreakpointsFilter> {
         let mut filters = vec![];
         if source_langs.iter().any(|x| x == "cpp") {
@@ -703,9 +732,21 @@ impl DebugSession {
         filters
     }
 
-    fn handle_set_exception_breakpoints(&mut self, _args: SetExceptionBreakpointsArguments) -> Result<(), Error> {
-        // TODO
-        Ok(())
+    fn set_exception_breakpoints(&mut self, filters: &[String]) -> Vec<SBBreakpoint> {
+        let cpp_throw = filters.iter().any(|x| x == "cpp_throw");
+        let cpp_catch = filters.iter().any(|x| x == "cpp_catch");
+        let rust_panic = filters.iter().any(|x| x == "rust_panic");
+        let mut bps = vec![];
+        if cpp_throw || cpp_catch {
+            bps.push(
+                self.target
+                    .breakpoint_create_for_exception(LanguageType::C_plus_plus, cpp_catch, cpp_throw),
+            );
+        }
+        if rust_panic {
+            bps.push(self.target.breakpoint_create_by_name("rust_panic"));
+        }
+        bps
     }
 
     fn init_bp_actions(&self, bp_info: &BreakpointInfo) {
