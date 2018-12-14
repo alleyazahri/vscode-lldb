@@ -2,6 +2,7 @@ import sys
 import lldb
 import traceback
 import logging
+import debugger
 from ctypes import *
 from value import Value
 
@@ -17,10 +18,12 @@ if sys.version_info[0] > 2:
 def to_utf8(s):
     return s.encode('utf8', 'backslashreplace')
 
-sys.modules['debugger'] = sys.modules[__name__]
-
-# import ptvsd
-# ptvsd.attach_server.attach(address=('127.0.0.1', 3000))
+try:
+    import ptvsd
+    ptvsd.enable_attach(address=('0.0.0.0', 3000))
+    #ptvsd.wait_for_attach()
+except:
+    log.warn('Could not import ptvsd')
 
 #============================================================================================
 

@@ -13,5 +13,6 @@ add_copy_files(codelldb
     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
     FILES ${CMAKE_SOURCE_DIR}/adapter2/codelldb.py
           ${CMAKE_SOURCE_DIR}/adapter2/value.py
+          ${CMAKE_SOURCE_DIR}/adapter2/debugger.py
           ${CMAKE_SOURCE_DIR}/formatters/rust.py
 )

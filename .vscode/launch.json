@@ -53,14 +53,16 @@
 		{
 			"name": "codelldb python",
 			"type": "python",
-			"request": "launch",
-			"host": "localhost",
+			"request": "attach",
+			"preLaunchTask": "wait for port 3000",
 			"port": 3000,
-			"pythonPath": "bash",
-			//"program": "${workspaceFolder}/tools/dummy.py"
-			// "request": "attach",
-			// "port": 3000,
-			// "host": "localhost"
+			"host": "127.0.0.1",
+			"pathMappings": [
+				{
+					"localRoot": "${workspaceFolder}",
+					"remoteRoot": "${workspaceFolder}/build"
+				}
+			]
 		},
 		{
 			"name": "codelldb cppvsdbg",

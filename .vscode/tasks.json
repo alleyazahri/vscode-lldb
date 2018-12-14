@@ -84,5 +84,11 @@
         "group": "build",
         "dependsOn": "vsix_extracted",
       },
+      {
+        "type": "process",
+        "label": "wait for port 3000",
+        "command":"python",
+        "args": ["${workspaceFolder}/tools/wait_for_port.py", "3000"]
+      }
     ]
   }
