@@ -83,7 +83,11 @@ pub fn evaluate(
     let command = format!(
         "script codelldb.evaluate('{}',{},{:#X},{:#X})",
         script,
-        if simple_expr { "True" } else { "False" },
+        if simple_expr {
+            "True"
+        } else {
+            "False"
+        },
         callback as *mut c_void as usize,
         &mut eval_result as *mut EvalResult as usize
     );
@@ -113,10 +117,8 @@ pub fn modules_loaded(interpreter: &SBCommandInterpreter, modules: &mut Iterator
     info!("{}", module_addrs);
 
     let mut command_result = SBCommandReturnObject::new();
-    let command = format!(
-        "script codelldb.modules_loaded([{}],{:#X})",
-        module_addrs, assign_sbmodule as *mut c_void as usize,
-    );
+    let command =
+        format!("script codelldb.modules_loaded([{}],{:#X})", module_addrs, assign_sbmodule as *mut c_void as usize,);
     interpreter.handle_command(&command, &mut command_result, false);
     debug!("{:?}", command_result);
 }

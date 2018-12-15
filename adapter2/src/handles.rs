@@ -1,9 +1,9 @@
+use log::{debug, error, info};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::mem;
 use std::num::NonZeroU32;
 use std::rc::Rc;
-use log::{debug, error, info};
 
 use crate::error::Error;
 
@@ -19,7 +19,7 @@ pub fn to_i64(h: Option<Handle>) -> i64 {
 pub fn from_i64(v: i64) -> Result<Handle, Error> {
     match Handle::new(v as u32) {
         Some(h) => Ok(h),
-        None => Err(Error::Internal("Expected non-zero handle value".into()))
+        None => Err(Error::Internal("Expected non-zero handle value".into())),
     }
 }
 

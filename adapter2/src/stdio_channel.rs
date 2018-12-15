@@ -1,6 +1,6 @@
+use log::{debug, error, info};
 use tokio::io;
 use tokio::prelude::*;
-use log::{debug, error, info};
 
 pub struct StdioChannel {
     stdin: io::Stdin,

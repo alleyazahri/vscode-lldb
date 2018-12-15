@@ -11,12 +11,7 @@ fn main() -> Result<(), failure::Error> {
     let matches = App::new("codelldb")
         .arg(Arg::with_name("port").long("port").takes_value(true))
         .arg(Arg::with_name("multi-session").long("multi-session"))
-        .arg(
-            Arg::with_name("preload")
-                .long("preload")
-                .multiple(true)
-                .takes_value(true),
-        )
+        .arg(Arg::with_name("preload").long("preload").multiple(true).takes_value(true))
         .arg(Arg::with_name("params").long("params").takes_value(true))
         .get_matches();
 

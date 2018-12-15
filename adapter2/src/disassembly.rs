@@ -30,9 +30,7 @@ impl AddressSpace {
     }
 
     pub fn get_by_address(&self, load_addr: Address) -> Option<Rc<DisassembledRange>> {
-        let idx = self
-            .by_address
-            .upper_bound_by_key(&load_addr, |dasm| dasm.start_load_addr);
+        let idx = self.by_address.upper_bound_by_key(&load_addr, |dasm| dasm.start_load_addr);
         if idx == 0 {
             None
         } else {
@@ -77,10 +75,7 @@ impl AddressSpace {
         &mut self, start_addr: SBAddress, end_addr: SBAddress, instructions: SBInstructionList,
     ) -> Rc<DisassembledRange> {
         let handle = Handle::new((self.by_handle.len() + 1000) as u32).unwrap();
-        let instruction_addrs = instructions
-            .iter()
-            .map(|i| i.address().load_address(&self.target))
-            .collect();
+        let instruction_addrs = instructions.iter().map(|i| i.address().load_address(&self.target)).collect();
         let start_load_addr = start_addr.load_address(&self.target);
         let end_load_addr = end_addr.load_address(&self.target);
         let dasm = Rc::new(DisassembledRange {
@@ -96,9 +91,7 @@ impl AddressSpace {
             source_text: RefCell::new(None),
         });
         self.by_handle.insert(handle, dasm.clone());
-        let idx = self
-            .by_address
-            .lower_bound_by_key(&dasm.start_load_addr, |dasm| dasm.start_load_addr);
+        let idx = self.by_address.lower_bound_by_key(&dasm.start_load_addr, |dasm| dasm.start_load_addr);
         self.by_address.insert(idx, dasm.clone());
         dasm
     }
@@ -147,11 +140,7 @@ impl DisassembledRange {
         AdapterData {
             start: self.start_load_addr,
             end: self.end_load_addr,
-            line_offsets: self
-                .instruction_addresses
-                .iter()
-                .map(|addr| (addr - self.start_load_addr) as u32)
-                .collect(),
+            line_offsets: self.instruction_addresses.iter().map(|addr| (addr - self.start_load_addr) as u32).collect(),
         }
     }
 
@@ -199,7 +188,11 @@ impl DisassembledRange {
             let mnemonic = instr.mnemonic(&self.target);
             let operands = instr.operands(&self.target);
             let comment = instr.comment(&self.target);
-            let comment_sep = if comment.is_empty() { "" } else { "  ; " };
+            let comment_sep = if comment.is_empty() {
+                ""
+            } else {
+                "  ; "
+            };
             #[cfg_attr(rustfmt, rustfmt_skip)]
             writeln!(text, "{:08X}: {:<dumpwidth$} {:<6} {}{}{}",
                 load_addr, dump, mnemonic, operands, comment_sep, comment,

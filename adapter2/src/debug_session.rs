@@ -342,10 +342,7 @@ impl DebugSession {
                 })
             }
         };
-        self.send_message
-            .borrow_mut()
-            .try_send(response)
-            .map_err(|err| panic!("Could not send response: {}", err));
+        self.send_message.borrow_mut().try_send(response).map_err(|err| panic!("Could not send response: {}", err));
     }
 
     fn send_event(&self, event_body: EventBody) {
@@ -353,10 +350,7 @@ impl DebugSession {
             seq: 0,
             body: event_body,
         });
-        self.send_message
-            .borrow_mut()
-            .try_send(event)
-            .map_err(|err| panic!("Could not send event: {}", err));
+        self.send_message.borrow_mut().try_send(event).map_err(|err| panic!("Could not send event: {}", err));
     }
 
     fn send_request(&self, args: RequestArguments) {
@@ -365,10 +359,7 @@ impl DebugSession {
             arguments: Some(args),
         });
         self.request_seq.set(self.request_seq.get() + 1);
-        self.send_message
-            .borrow_mut()
-            .try_send(request)
-            .map_err(|err| panic!("Could not send request: {}", err));
+        self.send_message.borrow_mut().try_send(request).map_err(|err| panic!("Could not send request: {}", err));
     }
 
     fn console_message(&self, output: impl Into<String>) {
@@ -390,8 +381,7 @@ impl DebugSession {
         self.debugger = Initialized(SBDebugger::create(false));
         self.debugger.set_async(true);
 
-        self.event_listener
-            .start_listening_for_event_class(&self.debugger, SBThread::broadcaster_class_name(), !0);
+        self.event_listener.start_listening_for_event_class(&self.debugger, SBThread::broadcaster_class_name(), !0);
 
         let interpreter = self.debugger.command_interpreter();
         python::initialize(&interpreter);
@@ -433,7 +423,9 @@ impl DebugSession {
             (None, None, Some(file_path)) => self.set_source_breakpoints(Path::new(file_path), requested_bps),
             _ => unreachable!(),
         }?;
-        Ok(SetBreakpointsResponseBody { breakpoints })
+        Ok(SetBreakpointsResponseBody {
+            breakpoints,
+        })
     }
 
     fn set_source_breakpoints(
@@ -451,14 +443,9 @@ impl DebugSession {
         let mut result = vec![];
         for req in requested_bps {
             // Find existing breakpoint or create a new one
-            let bp = match existing_bps
-                .get(&req.line)
-                .and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id))
-            {
+            let bp = match existing_bps.get(&req.line).and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id)) {
                 Some(bp) => bp,
-                None => self
-                    .target
-                    .breakpoint_create_by_location(file_path_norm.to_str()?, req.line as u32),
+                None => self.target.breakpoint_create_by_location(file_path_norm.to_str()?, req.line as u32),
             };
 
             let bp_info = BreakpointInfo {
@@ -503,10 +490,7 @@ impl DebugSession {
             let address = dasm.address_by_line_num(req.line as u32);
 
             // Find existing breakpoint or create a new one
-            let bp = match existing_bps
-                .get(&req.line)
-                .and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id))
-            {
+            let bp = match existing_bps.get(&req.line).and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id)) {
                 Some(bp) => bp,
                 None => self.target.breakpoint_create_by_absolute_address(address),
             };
@@ -551,7 +535,10 @@ impl DebugSession {
             let bp_info = BreakpointInfo {
                 id: bp.id(),
                 breakpoint: bp,
-                kind: BreakpointKind::Assembly { address, dasm },
+                kind: BreakpointKind::Assembly {
+                    address,
+                    dasm,
+                },
                 condition: req.condition.clone(),
                 log_message: req.log_message.clone(),
                 ignore_count: 0,
@@ -591,7 +578,10 @@ impl DebugSession {
                     ..Default::default()
                 }
             }
-            BreakpointKind::Assembly { address, dasm } => {
+            BreakpointKind::Assembly {
+                address,
+                dasm,
+            } => {
                 let adapter_data = Some(serde_json::to_value(dasm.adapter_data()).unwrap());
                 Breakpoint {
                     id: Some(bp_info.id as i64),
@@ -641,10 +631,7 @@ impl DebugSession {
         let mut result = vec![];
         for req in args.breakpoints {
             // Find existing breakpoint or create a new one
-            let bp = match function
-                .get(&req.name)
-                .and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id))
-            {
+            let bp = match function.get(&req.name).and_then(|bp_id| self.target.find_breakpoint_by_id(*bp_id)) {
                 Some(bp) => bp,
                 None => {
                     if req.name.starts_with("/re ") {
@@ -675,7 +662,9 @@ impl DebugSession {
         }
         mem::replace(function, new_bps);
 
-        Ok(SetBreakpointsResponseBody { breakpoints: result })
+        Ok(SetBreakpointsResponseBody {
+            breakpoints: result,
+        })
     }
 
     fn handle_set_exception_breakpoints(&mut self, args: SetExceptionBreakpointsArguments) -> Result<(), Error> {
@@ -699,10 +688,7 @@ impl DebugSession {
                 log_message: None,
                 ignore_count: 0,
             };
-            self.breakpoints
-                .borrow_mut()
-                .breakpoint_infos
-                .insert(bp_info.id, bp_info);
+            self.breakpoints.borrow_mut().breakpoint_infos.insert(bp_info.id, bp_info);
         }
         Ok(())
     }
@@ -737,10 +723,7 @@ impl DebugSession {
         let rust_panic = filters.iter().any(|x| x == "rust_panic");
         let mut bps = vec![];
         if cpp_throw || cpp_catch {
-            bps.push(
-                self.target
-                    .breakpoint_create_for_exception(LanguageType::C_plus_plus, cpp_catch, cpp_throw),
-            );
+            bps.push(self.target.breakpoint_create_for_exception(LanguageType::C_plus_plus, cpp_catch, cpp_throw));
         }
         if rust_panic {
             bps.push(self.target.breakpoint_create_by_name("rust_panic"));
@@ -879,12 +862,7 @@ impl DebugSession {
         // Casting away cb's lifetime.
         // This is safe, because we are blocking current thread until f() returns.
         let cb: Box<FnBox() + Send + 'static> = unsafe { std::mem::transmute(cb) };
-        self_ref
-            .lock()
-            .unwrap()
-            .incoming_send
-            .send(InputEvent::Invoke(cb))
-            .unwrap();
+        self_ref.lock().unwrap().incoming_send.send(InputEvent::Invoke(cb)).unwrap();
         receiver.recv().unwrap()
     }
 
@@ -924,10 +902,7 @@ impl DebugSession {
                 launch_env.insert(k.clone(), v.clone());
             }
         }
-        let launch_env = launch_env
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect::<Vec<String>>();
+        let launch_env = launch_env.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<String>>();
         launch_info.set_environment_entries(launch_env.iter().map(|s| s.as_ref()), false);
 
         if let Some(ref ds) = args.display_settings {
@@ -994,9 +969,7 @@ impl DebugSession {
             self.default_expr_type = expressions;
         }
         if args.program.is_none() && args.pid.is_none() {
-            return Err(Error::UserError(
-                r#"Either "program" or "pid" is required for attach."#.into(),
-            ));
+            return Err(Error::UserError(r#"Either "program" or "pid" is required for attach."#.into()));
         }
         if let Some(commands) = &args.init_commands {
             self.exec_commands(&commands);
@@ -1016,9 +989,9 @@ impl DebugSession {
         if let Some(pid) = args.pid {
             let pid = match pid {
                 Pid::Number(n) => n as ProcessID,
-                Pid::String(s) => s
-                    .parse()
-                    .map_err(|_| Error::UserError("Process id must me a positive integer.".into()))?,
+                Pid::String(s) => {
+                    s.parse().map_err(|_| Error::UserError("Process id must me a positive integer.".into()))?
+                }
             };
             attach_info.set_process_id(pid);
         } else if let Some(program) = args.program {
@@ -1189,9 +1162,13 @@ impl DebugSession {
     fn handle_threads(&mut self) -> Result<ThreadsResponseBody, Error> {
         if !self.process.is_initialized() {
             // VSCode may send a `threads` request after a failed launch.
-            return Ok(ThreadsResponseBody { threads: vec![] });
+            return Ok(ThreadsResponseBody {
+                threads: vec![],
+            });
         }
-        let mut response = ThreadsResponseBody { threads: vec![] };
+        let mut response = ThreadsResponseBody {
+            threads: vec![],
+        };
         for thread in self.process.threads() {
             response.threads.push(Thread {
                 id: thread.thread_id() as i64,
@@ -1288,36 +1265,28 @@ impl DebugSession {
         let frame_id = Handle::new(args.frame_id as u32).unwrap();
         if let Some(Container::StackFrame(frame)) = self.var_refs.get(frame_id) {
             let frame = frame.clone();
-            let locals_handle = self
-                .var_refs
-                .create(Some(frame_id), "[locs]", Container::Locals(frame.clone()));
+            let locals_handle = self.var_refs.create(Some(frame_id), "[locs]", Container::Locals(frame.clone()));
             let locals = Scope {
                 name: "Local".into(),
                 variables_reference: locals_handle.get() as i64,
                 expensive: false,
                 ..Default::default()
             };
-            let statics_handle = self
-                .var_refs
-                .create(Some(frame_id), "[stat]", Container::Statics(frame.clone()));
+            let statics_handle = self.var_refs.create(Some(frame_id), "[stat]", Container::Statics(frame.clone()));
             let statics = Scope {
                 name: "Static".into(),
                 variables_reference: statics_handle.get() as i64,
                 expensive: false,
                 ..Default::default()
             };
-            let globals_handle = self
-                .var_refs
-                .create(Some(frame_id), "[glob]", Container::Globals(frame.clone()));
+            let globals_handle = self.var_refs.create(Some(frame_id), "[glob]", Container::Globals(frame.clone()));
             let globals = Scope {
                 name: "Global".into(),
                 variables_reference: globals_handle.get() as i64,
                 expensive: false,
                 ..Default::default()
             };
-            let registers_handle = self
-                .var_refs
-                .create(Some(frame_id), "[regs]", Container::Registers(frame));
+            let registers_handle = self.var_refs.create(Some(frame_id), "[regs]", Container::Registers(frame));
             let registers = Scope {
                 name: "Registers".into(),
                 variables_reference: registers_handle.get() as i64,
@@ -1385,9 +1354,7 @@ impl DebugSession {
                     // If synthetic, add [raw] view.
                     if var.is_synthetic() {
                         let raw_var = var.non_synthetic_value();
-                        let handle = self
-                            .var_refs
-                            .create(Some(container_handle), "[raw]", Container::SBValue(raw_var));
+                        let handle = self.var_refs.create(Some(container_handle), "[raw]", Container::SBValue(raw_var));
                         let raw = Variable {
                             name: "[raw]".to_owned(),
                             value: var.type_name().unwrap_or_default().to_owned(),
@@ -1400,12 +1367,11 @@ impl DebugSession {
                 }
                 Container::StackFrame(_) => vec![],
             };
-            Ok(VariablesResponseBody { variables: variables })
+            Ok(VariablesResponseBody {
+                variables: variables,
+            })
         } else {
-            Err(Error::Internal(format!(
-                "Invalid variabes reference: {}",
-                container_handle
-            )))
+            Err(Error::Internal(format!("Invalid variabes reference: {}", container_handle)))
         }
     }
 
@@ -1483,10 +1449,7 @@ impl DebugSession {
     // Generate a handle for a variable.
     fn get_var_handle(&mut self, parent_handle: Option<Handle>, key: &str, var: &SBValue) -> Option<Handle> {
         if var.num_children() > 0 || var.is_synthetic() {
-            Some(
-                self.var_refs
-                    .create(parent_handle, key, Container::SBValue(var.clone())),
-            )
+            Some(self.var_refs.create(parent_handle, key, Container::SBValue(var.clone())))
         } else {
             None
         }
@@ -1650,30 +1613,29 @@ impl DebugSession {
         // Expression
         let (expression, expr_format) = self.get_expr_format(expression);
         let expr_format = expr_format.unwrap_or(self.global_format);
-        self.evaluate_expr_in_frame(expression, frame.as_ref())
-            .map(|val| match val {
-                PythonValue::SBValue(sbval) => {
-                    let handle = self.get_var_handle(None, expression, &sbval);
-                    EvaluateResponseBody {
-                        result: self.get_var_value_str(&sbval, expr_format, handle.is_some()),
-                        type_: sbval.type_name().map(|s| s.to_owned()),
-                        variables_reference: handles::to_i64(handle),
-                        ..Default::default()
-                    }
+        self.evaluate_expr_in_frame(expression, frame.as_ref()).map(|val| match val {
+            PythonValue::SBValue(sbval) => {
+                let handle = self.get_var_handle(None, expression, &sbval);
+                EvaluateResponseBody {
+                    result: self.get_var_value_str(&sbval, expr_format, handle.is_some()),
+                    type_: sbval.type_name().map(|s| s.to_owned()),
+                    variables_reference: handles::to_i64(handle),
+                    ..Default::default()
                 }
-                PythonValue::Int(val) => EvaluateResponseBody {
-                    result: val.to_string(),
-                    ..Default::default()
-                },
-                PythonValue::Bool(val) => EvaluateResponseBody {
-                    result: val.to_string(),
-                    ..Default::default()
-                },
-                PythonValue::String(s) | PythonValue::Object(s) => EvaluateResponseBody {
-                    result: s,
-                    ..Default::default()
-                },
-            })
+            }
+            PythonValue::Int(val) => EvaluateResponseBody {
+                result: val.to_string(),
+                ..Default::default()
+            },
+            PythonValue::Bool(val) => EvaluateResponseBody {
+                result: val.to_string(),
+                ..Default::default()
+            },
+            PythonValue::String(s) | PythonValue::Object(s) => EvaluateResponseBody {
+                result: s,
+                ..Default::default()
+            },
+        })
     }
 
     // Evaluates expr in the context of frame (or in global context if frame is None)
@@ -1754,10 +1716,7 @@ impl DebugSession {
 
     fn handle_set_variable(&mut self, args: SetVariableArguments) -> Result<SetVariableResponseBody, Error> {
         let container_handle = handles::from_i64(args.variables_reference)?;
-        let container = self
-            .var_refs
-            .get(container_handle)
-            .expect("Invalid variables reference");
+        let container = self.var_refs.get(container_handle).expect("Invalid variables reference");
         let child = match container {
             Container::SBValue(container) => container.child_member_with_name(&args.name),
             Container::Locals(frame) | Container::Globals(frame) | Container::Statics(frame) => {
@@ -1884,7 +1843,9 @@ impl DebugSession {
                 ..Default::default()
             })
             .collect::<Vec<_>>();
-        Ok(CompletionsResponseBody { targets })
+        Ok(CompletionsResponseBody {
+            targets,
+        })
     }
 
     fn handle_disconnect(&mut self, args: Option<DisconnectArguments>) -> Result<(), Error> {
@@ -1998,10 +1959,16 @@ impl DebugSession {
                 ProcessState::Crashed | ProcessState::Suspended => self.notify_process_stopped(),
                 ProcessState::Exited => {
                     let exit_code = self.process.exit_status() as i64;
-                    self.send_event(EventBody::exited(ExitedEventBody { exit_code }));
-                    self.send_event(EventBody::terminated(TerminatedEventBody { restart: None }));
+                    self.send_event(EventBody::exited(ExitedEventBody {
+                        exit_code,
+                    }));
+                    self.send_event(EventBody::terminated(TerminatedEventBody {
+                        restart: None,
+                    }));
                 }
-                ProcessState::Detached => self.send_event(EventBody::terminated(TerminatedEventBody { restart: None })),
+                ProcessState::Detached => self.send_event(EventBody::terminated(TerminatedEventBody {
+                    restart: None,
+                })),
                 _ => (),
             }
         }
@@ -2181,17 +2148,17 @@ impl DebugSession {
             reason: "new".into(),
             breakpoint: self.make_bp_response(&bp_info),
         }));
-        self.breakpoints
-            .borrow_mut()
-            .breakpoint_infos
-            .insert(bp_info.id, bp_info);
+        self.breakpoints.borrow_mut().breakpoint_infos.insert(bp_info.id, bp_info);
     }
 
     fn notify_breakpoint_resolved(&mut self, bp: SBBreakpoint) {
         let mut breakpoints = self.breakpoints.borrow_mut();
         if let Some(bp_info) = breakpoints.breakpoint_infos.get_mut(&bp.id()) {
             match bp_info.kind {
-                BreakpointKind::Source { ref mut verified, .. } => {
+                BreakpointKind::Source {
+                    ref mut verified,
+                    ..
+                } => {
                     for bp_loc in bp.locations() {
                         if bp_loc.is_resolved() {
                             *verified = true;
@@ -2232,10 +2199,8 @@ impl DebugSession {
                         }
                     }
                     let localized = localized.map(|path| Rc::new(path));
-                    source_map_cache.insert(
-                        (directory.to_owned().into(), filename.to_owned().into()),
-                        localized.clone(),
-                    );
+                    source_map_cache
+                        .insert((directory.to_owned().into(), filename.to_owned().into()), localized.clone());
                     localized
                 }
             }
