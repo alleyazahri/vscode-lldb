@@ -46,7 +46,8 @@ type AsyncResponder = FnBox(&mut DebugSession) -> Result<ResponseBody, Error>;
 enum BreakpointKind {
     Source {
         file_path: PathBuf,
-        resolved_line: Option<u32>,
+        line: u32,
+        verified: bool,
     },
     Function,
     Assembly {
@@ -438,13 +439,13 @@ impl DebugSession {
     fn set_source_breakpoints(
         &mut self, file_path: &Path, requested_bps: &[SourceBreakpoint],
     ) -> Result<Vec<Breakpoint>, Error> {
-        let file_path_norm = normalize_path(file_path);
-        let file_name = file_path_norm.file_name()?;
         let BreakpointsState {
             ref mut source,
             ref mut breakpoint_infos,
             ..
         } = *self.breakpoints.borrow_mut();
+
+        let file_path_norm = normalize_path(file_path);
         let existing_bps = source.entry(file_path.into()).or_default();
         let mut new_bps = HashMap::new();
         let mut result = vec![];
@@ -457,27 +458,16 @@ impl DebugSession {
                 Some(bp) => bp,
                 None => self
                     .target
-                    .breakpoint_create_by_location(file_name.to_str()?, req.line as u32),
+                    .breakpoint_create_by_location(file_path_norm.to_str()?, req.line as u32),
             };
-
-            // Filter locations on full source file path
-            let mut resolved_line = None;
-            for bp_loc in bp.locations() {
-                if let Some(le) = bp_loc.address().line_entry() {
-                    if is_same_path(&normalize_path(le.file_spec().path()), &file_path_norm) {
-                        resolved_line = Some(le.line());
-                    } else {
-                        bp_loc.set_enabled(false);
-                    }
-                }
-            }
 
             let bp_info = BreakpointInfo {
                 id: bp.id(),
                 breakpoint: bp,
                 kind: BreakpointKind::Source {
                     file_path: file_path.into(),
-                    resolved_line: resolved_line,
+                    line: req.line as u32,
+                    verified: false,
                 },
                 condition: req.condition.clone(),
                 log_message: req.log_message.clone(),
@@ -584,35 +574,39 @@ impl DebugSession {
         match &bp_info.kind {
             BreakpointKind::Source {
                 file_path,
-                resolved_line,
+                line,
+                verified,
             } => {
                 let file_name = file_path.file_name().unwrap();
                 Breakpoint {
                     id: Some(bp_info.id as i64),
-                    verified: resolved_line.is_some(),
-                    line: resolved_line.map(|l| l as i64),
                     source: Some(Source {
                         name: Some(file_name.to_string_lossy().into_owned()),
                         path: Some(file_path.to_string_lossy().into_owned()),
+                        ..Default::default()
+                    }),
+                    line: Some(*line as i64),
+                    verified: *verified,
+                    message,
+                    ..Default::default()
+                }
+            }
+            BreakpointKind::Assembly { address, dasm } => {
+                let adapter_data = Some(serde_json::to_value(dasm.adapter_data()).unwrap());
+                Breakpoint {
+                    id: Some(bp_info.id as i64),
+                    verified: true,
+                    line: Some(dasm.line_num_by_address(*address) as i64),
+                    source: Some(Source {
+                        name: Some(dasm.source_name().into()),
+                        source_reference: Some(handles::to_i64(Some(dasm.handle()))),
+                        adapter_data,
                         ..Default::default()
                     }),
                     message,
                     ..Default::default()
                 }
             }
-            BreakpointKind::Assembly { address, dasm } => Breakpoint {
-                id: Some(bp_info.id as i64),
-                verified: true,
-                line: Some(dasm.line_num_by_address(*address) as i64),
-                source: Some(Source {
-                    name: Some(dasm.source_name().into()),
-                    source_reference: Some(handles::to_i64(Some(dasm.handle()))),
-                    adapter_data: Some(serde_json::to_value(dasm.adapter_data()).unwrap()),
-                    ..Default::default()
-                }),
-                message,
-                ..Default::default()
-            },
             BreakpointKind::Function => {
                 let verified = self
                     .target
@@ -626,7 +620,12 @@ impl DebugSession {
                     ..Default::default()
                 }
             }
-            BreakpointKind::Exception => unreachable!(),
+            BreakpointKind::Exception => Breakpoint {
+                id: Some(bp_info.id as i64),
+                verified: bp_info.breakpoint.num_resolved_locations() > 0,
+                message,
+                ..Default::default()
+            },
         }
     }
 
@@ -775,11 +774,6 @@ impl DebugSession {
                 let breakpoints = session.breakpoints.borrow();
                 let bp_info = breakpoints.breakpoint_infos.get(&location.breakpoint().id()).unwrap();
 
-                if !session.is_valid_source_bp_location(&location, bp_info) {
-                    location.set_enabled(false);
-                    return false;
-                }
-
                 if let Some(ref py_condition) = py_condition {
                     if !session.evaluate_python_bp_condition(py_condition, process, thread, location) {
                         return false;
@@ -872,23 +866,6 @@ impl DebugSession {
                 }
             }
         })
-    }
-
-    fn is_valid_source_bp_location(&self, bp_loc: &SBBreakpointLocation, bp_info: &BreakpointInfo) -> bool {
-        match &bp_info.kind {
-            BreakpointKind::Source { file_path, .. } => {
-                if let Some(le) = bp_loc.address().line_entry() {
-                    if let Some(local_path) = self.map_filespec_to_local(&le.file_spec()) {
-                        is_same_path(local_path.as_path(), Path::new(file_path))
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-            _ => true,
-        }
     }
 
     // Invoke f() on session's main thread
@@ -2149,27 +2126,13 @@ impl DebugSession {
     fn handle_breakpoint_event(&mut self, event: &SBBreakpointEvent) {
         let bp = event.breakpoint();
         let event_type = event.event_type();
-        let bp_id = bp.id();
 
         if event_type.intersects(BreakpointEventType::Added) {
-            // let mut breakpoints = self.breakpoints.borrow_mut();
-            // let bp_info = breakpoints.entry(&bp_id).or_insert_with(|| {
-
-            // });)
-
-            // match entry {
-            //     Entry::Occupied(bp_info) => bp_info,
-            //     Entry::Vacant => entry.in
-            // }
-
-            self.send_event(EventBody::breakpoint(BreakpointEventBody {
-                reason: "new".into(),
-                breakpoint: Breakpoint {
-                    id: Some(bp_id as i64),
-                    ..Default::default()
-                },
-            }));
+            self.notify_breakpoint_added(bp);
+        } else if event_type.intersects(BreakpointEventType::LocationsResolved) {
+            self.notify_breakpoint_resolved(bp);
         } else if event_type.intersects(BreakpointEventType::Removed) {
+            let bp_id = bp.id();
             bp.clear_callback();
             self.send_event(EventBody::breakpoint(BreakpointEventBody {
                 reason: "removed".into(),
@@ -2177,6 +2140,69 @@ impl DebugSession {
                     id: Some(bp_id as i64),
                     ..Default::default()
                 },
+            }));
+        }
+    }
+
+    fn notify_breakpoint_added(&mut self, bp: SBBreakpoint) {
+        let address = bp.location_at_index(0).address();
+        let bp_info = if let Some(le) = address.line_entry() {
+            BreakpointInfo {
+                id: bp.id(),
+                breakpoint: bp,
+                kind: BreakpointKind::Source {
+                    file_path: le.file_spec().path().into(),
+                    line: le.line(),
+                    verified: false,
+                },
+                condition: None,
+                log_message: None,
+                ignore_count: 0,
+            }
+        } else {
+            let address = address.load_address(&self.target);
+            let dasm = self
+                .disassembly
+                .get_by_address(address)
+                .unwrap_or_else(|| self.disassembly.create_from_address(address));
+            BreakpointInfo {
+                id: bp.id(),
+                breakpoint: bp,
+                kind: BreakpointKind::Assembly {
+                    address: address,
+                    dasm: dasm,
+                },
+                condition: None,
+                log_message: None,
+                ignore_count: 0,
+            }
+        };
+        self.send_event(EventBody::breakpoint(BreakpointEventBody {
+            reason: "new".into(),
+            breakpoint: self.make_bp_response(&bp_info),
+        }));
+        self.breakpoints
+            .borrow_mut()
+            .breakpoint_infos
+            .insert(bp_info.id, bp_info);
+    }
+
+    fn notify_breakpoint_resolved(&mut self, bp: SBBreakpoint) {
+        let mut breakpoints = self.breakpoints.borrow_mut();
+        if let Some(bp_info) = breakpoints.breakpoint_infos.get_mut(&bp.id()) {
+            match bp_info.kind {
+                BreakpointKind::Source { ref mut verified, .. } => {
+                    for bp_loc in bp.locations() {
+                        if bp_loc.is_resolved() {
+                            *verified = true;
+                        }
+                    }
+                }
+                _ => (),
+            }
+            self.send_event(EventBody::breakpoint(BreakpointEventBody {
+                reason: "changed".into(),
+                breakpoint: self.make_bp_response(bp_info),
             }));
         }
     }

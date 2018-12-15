@@ -35,6 +35,11 @@ impl SBBreakpointLocation {
             self->SetEnabled(enabled);
         })
     }
+    pub fn is_resolved(&self) -> bool {
+        cpp!(unsafe [self as "SBBreakpointLocation*"] -> bool as "bool" {
+            return self->IsResolved();
+        })
+    }
 }
 
 impl fmt::Debug for SBBreakpointLocation {
