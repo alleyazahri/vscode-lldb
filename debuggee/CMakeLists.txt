@@ -21,11 +21,14 @@ endif()
 
 # debuggee
 add_executable(debuggee
-    cpp/../cpp/./debuggee.cpp  # Use unnormalized path on purpose - to test debugger's path normalization
+    cpp/debuggee.cpp
 )
+
 if (${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Windows")
     target_link_libraries(debuggee debuggee_nodebinfo)
 else()
+    # Use unnormalized path on purpose - to test debugger's path normalization
+    target_compile_options(debuggee PRIVATE -fdebug-prefix-map=${CMAKE_SOURCE_DIR}/cpp=../../debuggee/cpp/../cpp/.)
     target_link_libraries(debuggee debuggee_nodebinfo dl pthread)
 endif()
 

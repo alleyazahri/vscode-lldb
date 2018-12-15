@@ -19,13 +19,18 @@
 		{
 			"name": "classic adapter",
 			"type": "python",
-			"request": "launch",
-			"preLaunchTask": "lldb",
-			"pythonPath": "${workspaceFolder}/tools/debug_launcher.py",
-			"program": "${workspaceFolder}/tools/debug_stub.py",
-			"env": {
-				"LLDB_EXECUTABLE": "${workspaceFolder}/build/lldb/bin/lldb"
-			}
+			"request": "attach",
+			"preLaunchTask": "debug launch classic adapter",
+			"port": 3000,
+			"host": "127.0.0.1",
+		},
+		{
+			"name": "bundled adapter",
+			"type": "python",
+			"request": "attach",
+			"preLaunchTask": "debug launch bundled adapter",
+			"port": 3000,
+			"host": "127.0.0.1",
 		},
 		{
 			"name": "codelldb",
@@ -59,8 +64,8 @@
 			"host": "127.0.0.1",
 			"pathMappings": [
 				{
-					"localRoot": "${workspaceFolder}",
-					"remoteRoot": "${workspaceFolder}/build"
+					"localRoot": "${workspaceFolder}/",
+					"remoteRoot": "${workspaceFolder}/build/"
 				}
 			]
 		},
@@ -141,7 +146,14 @@
 				"${workspaceRoot}/build/extension/**/*.js",
 				"${workspaceRoot}/build/tests/**/*.js"
 			]
-		}
+		},
+		{
+			"name": "python: current file",
+			"type": "python",
+			"request": "launch",
+			"program": "${file}",
+			"console": "integratedTerminal"
+		},
 	],
 	"compounds": [
 		{

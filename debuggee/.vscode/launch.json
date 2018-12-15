@@ -53,7 +53,8 @@
 			"type": "lldb",
 			"request": "launch",
 			"program": "${dbgconfig:targetDir}/debuggee",
-			"args": ["header"]
+			"args": ["header"],
+			"cwd": "${dbgconfig:targetDir}"
 		},
 		{
 			"name": "debuggee launch check_env",
