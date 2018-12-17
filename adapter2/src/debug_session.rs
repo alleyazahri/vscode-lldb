@@ -1972,6 +1972,26 @@ impl DebugSession {
                 _ => (),
             }
         }
+        if flags & (SBProcessEvent::BroadcastBitSTDOUT | SBProcessEvent::BroadcastBitSTDERR) != 0 {
+            let read_stdout = |b: &mut [u8]| self.process.read_stdout(b);
+            let read_stderr = |b: &mut [u8]| self.process.read_stderr(b);
+            let (read_stream, category): (&for<'r> Fn(&mut [u8]) -> usize, &str) =
+                if flags & SBProcessEvent::BroadcastBitSTDOUT != 0 {
+                    (&read_stdout, "stdout")
+                } else {
+                    (&read_stderr, "stderr")
+                };
+            let mut buffer = [0; 1024];
+            let mut read = read_stream(&mut buffer);
+            while read > 0 {
+                self.send_event(EventBody::output(OutputEventBody {
+                    category: Some(category.to_owned()),
+                    output: String::from_utf8_lossy(&buffer[..read]).into_owned(),
+                    ..Default::default()
+                }));
+                read = read_stream(&mut buffer);
+            }
+        }
     }
 
     fn notify_process_running(&mut self) {

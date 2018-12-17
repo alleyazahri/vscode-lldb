@@ -99,6 +99,27 @@ impl SBProcess {
         });
         unsafe { CStr::from_ptr(ptr).to_str().unwrap() }
     }
+    pub fn put_stdin(&self, buffer: &[u8]) -> usize {
+        let ptr = buffer.as_ptr();
+        let len = buffer.len();
+        cpp!(unsafe [self as "SBProcess*", ptr as "uint8_t*", len as "size_t"] -> usize as "size_t" {
+            return self->PutSTDIN((char*)ptr, len);
+        })
+    }
+    pub fn read_stdout(&self, buffer: &mut [u8]) -> usize {
+        let ptr = buffer.as_mut_ptr();
+        let len = buffer.len();
+        cpp!(unsafe [self as "SBProcess*", ptr as "uint8_t*", len as "size_t"] -> usize as "size_t" {
+            return self->GetSTDOUT((char*)ptr, len);
+        })
+    }
+    pub fn read_stderr(&self, buffer: &mut [u8]) -> usize {
+        let ptr = buffer.as_mut_ptr();
+        let len = buffer.len();
+        cpp!(unsafe [self as "SBProcess*", ptr as "uint8_t*", len as "size_t"] -> usize as "size_t" {
+            return self->GetSTDERR((char*)ptr, len);
+        })
+    }
 }
 
 impl fmt::Debug for SBProcess {
