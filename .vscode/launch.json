@@ -33,7 +33,7 @@
 			"host": "127.0.0.1",
 		},
 		{
-			"name": "codelldb",
+			"name": "codelldb on Linux",
 			"preLaunchTask": "codelldb",
 			"type": "lldb",
 			"request": "launch",
@@ -56,21 +56,30 @@
 			"terminal": "integrated"
 		},
 		{
-			"name": "codelldb python",
-			"type": "python",
-			"request": "attach",
-			"preLaunchTask": "wait for port 3000",
-			"port": 3000,
-			"host": "127.0.0.1",
-			"pathMappings": [
-				{
-					"localRoot": "${workspaceFolder}/",
-					"remoteRoot": "${workspaceFolder}/build/"
-				}
-			]
+			"name": "codelldb on Windows",
+			"preLaunchTask": "codelldb",
+			"type": "lldb",
+			"request": "launch",
+			"program": "${workspaceFolder}/build/adapter2/codelldb",
+			"args": [
+				"--preload=${workspaceFolder}/build/lldb/bin/liblldb.dll",
+				"--multi-session",
+				"--port=4711"
+			],
+			"env": {
+				"PATH": "${env:PATH};C:\\Python36-64;${workspaceFolder}\\build\\lldb\\bin",
+				"RUST_LOG": "error,codelldb=debug",
+				"RUST_LOG_STYLE": "always",
+				"RUST_BACKTRACE": "full",
+			},
+			"sourceLanguages": [
+				"cpp",
+				"rust"
+			],
+			"terminal": "integrated"
 		},
 		{
-			"name": "codelldb cppvsdbg",
+			"name": "codelldb on Windows+cppvsdbg",
 			"type": "cppvsdbg",
 			"request": "launch",
 			"preLaunchTask": "codelldb",
@@ -90,6 +99,20 @@
 			],
 			//"externalConsole": true,
 			"sourceFileMap": { "C:\\_work\\4\\s": "c:\\NW\\cpython" }
+		},
+		{
+			"name": "codelldb python",
+			"type": "python",
+			"request": "attach",
+			"preLaunchTask": "wait for port 3000",
+			"port": 3000,
+			"host": "127.0.0.1",
+			"pathMappings": [
+				{
+					"localRoot": "${workspaceFolder}/",
+					"remoteRoot": "${workspaceFolder}/build/"
+				}
+			]
 		},
 		{
 			"name": "test codelldb",
