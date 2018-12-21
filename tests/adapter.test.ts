@@ -447,9 +447,11 @@ suite('Adapter tests', () => {
                     };
 
                 await ds.compareVariables(scopes.body.scopes[0].variablesReference, {
-                    cstyle_enum1: 'type::CStyleEnum::A',
-                    cstyle_enum2: 'type::CStyleEnum::B',
-                    tuple_struct: '(3, "xxx", -3)',
+                    reg_enum2: '{0:100, 1:200}',
+                    reg_enum3: '{x:11.35, y:20.5}',
+                    reg_enum_ref: '{x:11.35, y:20.5}',
+                    cstyle_enum1: 'types::CStyleEnum::A',
+                    cstyle_enum2: 'types::CStyleEnum::B',
                     cstr: '"C String"',
                     osstr: '"OS String"',
                     path: foo_bar,
@@ -459,15 +461,13 @@ suite('Adapter tests', () => {
 
             // LLDB does not handle Rust enums well for now
             // reg_enum1: 'A',
-            // reg_enum2: 'B(100, 200)',
-            // reg_enum3: 'C{x:11.35, y:20.5}',
-            // reg_enum_ref: 'C{x:11.35, y:20.5}',
             // enc_enum1: 'Some("string")',
             // enc_enum2: 'Nothing',
             // opt_str1: 'Some("string")',
             // opt_str2: 'None',
             // opt_reg_struct1: 'Some({...})',
             // opt_reg_struct2: 'None',
+            // tuple_struct: '(3, "xxx", -3)',
 
             let response1 = await ds.evaluateRequest({
                 expression: 'vec_str', context: 'watch',

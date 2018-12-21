@@ -1313,7 +1313,6 @@ impl DebugSession {
                         locals: true,
                         statics: false,
                         in_scope_only: true,
-                        use_dynamic: DynamicValueType::NoDynamicValues,
                     });
                     let mut vars_iter = ret_val.into_iter().chain(variables.iter());
                     self.convert_scope_values(&mut vars_iter, "", Some(container_handle))
@@ -1324,7 +1323,6 @@ impl DebugSession {
                         locals: false,
                         statics: true,
                         in_scope_only: true,
-                        use_dynamic: DynamicValueType::NoDynamicValues,
                     });
                     let mut vars_iter = variables.iter().filter(|v| v.value_type() != ValueType::VariableStatic);
                     self.convert_scope_values(&mut vars_iter, "", Some(container_handle))
@@ -1335,7 +1333,6 @@ impl DebugSession {
                         locals: false,
                         statics: true,
                         in_scope_only: true,
-                        use_dynamic: DynamicValueType::NoDynamicValues,
                     });
                     let mut vars_iter = variables.iter(); //.filter(|v| v.value_type() != ValueType::VariableGlobal);
                     self.convert_scope_values(&mut vars_iter, "", Some(container_handle))

@@ -211,16 +211,6 @@ impl SBValue {
             return self->SetPreferSyntheticValue(use_synthetic);
         })
     }
-    pub fn prefer_dynamic_value(&self) -> DynamicValueType {
-        cpp!(unsafe [self as "SBValue*"] -> DynamicValueType as "DynamicValueType" {
-            return self->GetPreferDynamicValue();
-        })
-    }
-    pub fn set_prefer_dynamic_value(&self, use_dynamic: DynamicValueType) {
-        cpp!(unsafe [self as "SBValue*", use_dynamic as "DynamicValueType"] {
-            return self->SetPreferDynamicValue(use_dynamic);
-        })
-    }
     pub fn format(&self) -> Format {
         cpp!(unsafe [self as "SBValue*"] -> Format as "Format" {
             return self->GetFormat();

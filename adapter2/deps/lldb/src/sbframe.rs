@@ -56,11 +56,10 @@ impl SBFrame {
             locals,
             statics,
             in_scope_only,
-            use_dynamic,
         } = *options;
         cpp!(unsafe [self as "SBFrame*", arguments as "bool", locals as "bool", statics as "bool",
-                     in_scope_only as "bool", use_dynamic as "uint32_t"] -> SBValueList as "SBValueList" {
-            return self->GetVariables(arguments, locals, statics, in_scope_only, (lldb::DynamicValueType)use_dynamic);
+                     in_scope_only as "bool"] -> SBValueList as "SBValueList" {
+            return self->GetVariables(arguments, locals, statics, in_scope_only);
         })
     }
     pub fn find_variable(&self, name: &str) -> Option<SBValue> {
@@ -120,13 +119,4 @@ pub struct VariableOptions {
     pub locals: bool,
     pub statics: bool,
     pub in_scope_only: bool,
-    pub use_dynamic: DynamicValueType,
-}
-
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-#[repr(u32)]
-pub enum DynamicValueType {
-    NoDynamicValues = 0,
-    DynamicCanRunTarget = 1,
-    DynamicDontRunTarget = 2,
 }
