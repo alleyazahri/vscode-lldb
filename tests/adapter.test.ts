@@ -371,8 +371,6 @@ suite('Adapter tests', () => {
 
     suite('Rust tests', () => {
         test('variables', async function () {
-            if (triple.endsWith('pc-windows-msvc')) this.skip();
-
             let ds = await DebugTestSession.start(adapterLog);
             let bpLine = findMarker(rusttypesSource, '#BP1');
             let setBreakpointAsync = ds.setBreakpoint(rusttypesSource, bpLine);
@@ -385,49 +383,14 @@ suite('Adapter tests', () => {
             let scopes = await ds.scopesRequest({ frameId: frames.body.stackFrames[0].id });
 
             let foo_bar = /windows/.test(triple) ? '"foo\\bar"' : '"foo/bar"';
-            let str_tuple = adapterType == 'classic' ?
-                {
-                    '__0': '"A String"',
-                    '__1': '"String slice"',
-                    '__2': '"C String"',
-                    '__3': '"C String"',
-                    '__4': '"OS String"',
-                    '__5': '"OS String"',
-                    '__6': foo_bar,
-                    '__7': foo_bar,
-                } :
-                {
-                    '0': '"A String"',
-                    '1': '"String slice"',
-                    '2': '"C String"',
-                    '3': '"C String"',
-                    '4': '"OS String"',
-                    '5': '"OS String"',
-                    '6': foo_bar,
-                    '7': foo_bar,
-                };
 
             await ds.compareVariables(scopes.body.scopes[0].variablesReference, {
                 int: 17,
                 float: 3.14159274,
                 tuple: '(1, "a", 42)',
                 tuple_ref: '(1, "a", 42)',
-                // LLDB does not handle Rust enums well for now
-                // reg_enum1: 'A',
-                // reg_enum2: 'B(100, 200)',
-                // reg_enum3: 'C{x:11.35, y:20.5}',
-                // reg_enum_ref: 'C{x:11.35, y:20.5}',
-                // cstyle_enum1: 'A',
-                // cstyle_enum2: 'B',
-                // enc_enum1: 'Some("string")',
-                // enc_enum2: 'Nothing',
-                // opt_str1: 'Some("string")',
-                // opt_str2: 'None',
-                // tuple_struct: '(3, "xxx", -3)',
                 reg_struct: '{a:1, c:12}',
                 reg_struct_ref: '{a:1, c:12}',
-                // opt_reg_struct1: 'Some({...})',
-                // opt_reg_struct2: 'None',
                 array: { '[0]': 1, '[1]': 2, '[2]': 3, '[3]': 4, '[4]': 5 },
                 slice: '(5) &[1, 2, 3, 4, 5]',
                 vec_int: {
@@ -442,12 +405,8 @@ suite('Adapter tests', () => {
                 wstr1: '"Превед йожэг!"',
                 wstr2: '"Ḥ̪͔̦̺E͍̹̯̭͜ C̨͙̹̖̙O̡͍̪͖ͅM̢̗͙̫̬E̜͍̟̟̮S̢̢̪̘̦!"',
                 cstring: '"C String"',
-                cstr: '"C String"',
                 osstring: '"OS String"',
-                osstr: '"OS String"',
                 path_buf: foo_bar,
-                path: foo_bar,
-                str_tuple: str_tuple,
                 class: { finally: 1, import: 2, lambda: 3, raise: 4 },
                 boxed: { a: 1, b: '"b"', c: 12 },
                 rc_box: { $: '(refs:1) {...}', a: 1, b: '"b"', c: 12 },
@@ -464,6 +423,52 @@ suite('Adapter tests', () => {
                 ref_cell3_borrow: 12,
             });
 
+            if (!triple.endsWith('pc-windows-msvc')) {
+                let str_tuple = (adapterType == 'classic') ?
+                    {
+                        '__0': '"A String"',
+                        '__1': '"String slice"',
+                        '__2': '"C String"',
+                        '__3': '"C String"',
+                        '__4': '"OS String"',
+                        '__5': '"OS String"',
+                        '__6': foo_bar,
+                        '__7': foo_bar,
+                    } :
+                    {
+                        '0': '"A String"',
+                        '1': '"String slice"',
+                        '2': '"C String"',
+                        '3': '"C String"',
+                        '4': '"OS String"',
+                        '5': '"OS String"',
+                        '6': foo_bar,
+                        '7': foo_bar,
+                    };
+
+                await ds.compareVariables(scopes.body.scopes[0].variablesReference, {
+                    cstyle_enum1: 'type::CStyleEnum::A',
+                    cstyle_enum2: 'type::CStyleEnum::B',
+                    tuple_struct: '(3, "xxx", -3)',
+                    cstr: '"C String"',
+                    osstr: '"OS String"',
+                    path: foo_bar,
+                    str_tuple: str_tuple,
+                });
+            }
+
+            // LLDB does not handle Rust enums well for now
+            // reg_enum1: 'A',
+            // reg_enum2: 'B(100, 200)',
+            // reg_enum3: 'C{x:11.35, y:20.5}',
+            // reg_enum_ref: 'C{x:11.35, y:20.5}',
+            // enc_enum1: 'Some("string")',
+            // enc_enum2: 'Nothing',
+            // opt_str1: 'Some("string")',
+            // opt_str2: 'None',
+            // opt_reg_struct1: 'Some({...})',
+            // opt_reg_struct2: 'None',
+
             let response1 = await ds.evaluateRequest({
                 expression: 'vec_str', context: 'watch',
                 frameId: frames.body.stackFrames[0].id
@@ -475,7 +480,10 @@ suite('Adapter tests', () => {
                 frameId: frames.body.stackFrames[0].id
             });
             await ds.compareVariables(response2.body.variablesReference,
-                adapterType == 'classic' ? { '[0]': `'A'`, '[7]': `'g'` } : { '[0]': 65, '[7]': 103 });
+                (adapterType == 'classic' || triple.endsWith('pc-windows-msvc')) ?
+                    { '[0]': `'A'`, '[7]': `'g'` } :
+                    { '[0]': 65, '[7]': 103 }
+            );
             await ds.terminate();
         });
     });
