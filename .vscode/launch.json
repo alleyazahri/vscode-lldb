@@ -83,7 +83,7 @@
 			"stopAtEntry": false,
 			"cwd": "${workspaceFolder}",
 			"environment": [
-				{ "name": "PATH", "value":"${env:PATH};C:\\Python36-64" },
+				{ "name": "PATH", "value":"${env:PATH};C:\\Python36-64;${workspaceFolder}\\build\\lldb\\bin" },
 				{ "name":"RUST_LOG", "value":"error,codelldb=debug"},
 				{ "name":"RUST_LOG_STYLE", "value":"always"},
 				{ "name":"RUST_BACKTRACE", "value":"full"},

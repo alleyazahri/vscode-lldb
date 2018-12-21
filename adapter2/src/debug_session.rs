@@ -194,7 +194,7 @@ impl DebugSession {
             default_expr_type: Expressions::Simple,
             source_languages: parameters.source_languages.unwrap_or(vec!["cpp".into()]),
             suppress_missing_files: parameters.suppress_missing_source_files.unwrap_or(true),
-            evaluation_timeout: time::Duration::from_millis(parameters.evaluation_timeout.unwrap_or(100).into()),
+            evaluation_timeout: time::Duration::from_millis(parameters.evaluation_timeout.unwrap_or(5000).into()),
         };
 
         let debug_session = Arc::new(Mutex::new(debug_session));
